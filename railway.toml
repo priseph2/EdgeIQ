@@ -1,9 +1,4 @@
-[build]
-builder = "nixpacks"
-buildCommand = "pip install -r requirements.txt"
-
 [deploy]
-startCommand = "bash start.sh"
 healthcheckPath = "/health"
 healthcheckTimeout = 60
 restartPolicyType = "on_failure"
