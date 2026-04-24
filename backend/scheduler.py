@@ -63,7 +63,7 @@ async def job_refresh_fixtures():
             logger.error(f"{module} job error: {e}")
 
 
-
+async def job_daily_digest():
     from telegram_bot import send_daily_digest
     try:
         await send_daily_digest()

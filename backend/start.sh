@@ -11,7 +11,6 @@ echo "Python: $(python --version), FastAPI: $(python -c 'import fastapi; print(f
 if [ "${RUN_INGESTION_ON_START:-false}" = "true" ]; then
   (
     echo "Starting background ingestion..."
-    python -m data.ingest_nba && echo "NBA ingest done" || echo "NBA ingest failed"
 
     if [ -n "$FOOTBALL_DATA_API_KEY" ]; then
       python -m data.ingest_football && echo "Football ingest done" || echo "Football ingest failed"
