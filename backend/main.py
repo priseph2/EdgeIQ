@@ -94,6 +94,38 @@ async def admin_train(sport: str, token: str, background_tasks: BackgroundTasks)
         background_tasks.add_task(_run_bg, ["python", "-m", "ml.train", "--sport", sport])
     return {"status": f"Training {sport} started — watch Railway logs (2-3 mins)"}
 
+@app.get("/admin/status")
+async def admin_status(token: str):
+    """Shows DB record counts — poll this to track ingestion progress."""
+    _check(token)
+    from pathlib import Path
+    from supabase import create_client
+    from config import get_settings
+
+    s = get_settings()
+    sb = create_client(s.supabase_url, s.supabase_service_role_key)
+
+    bb_matches = sb.table("matches").select("id", count="exact").eq("sport", "basketball").execute()
+    bb_stats   = sb.table("team_stats_basketball").select("id", count="exact").execute()
+    fb_matches = sb.table("matches").select("id", count="exact").eq("sport", "football").execute()
+    fb_stats   = sb.table("team_stats_football").select("id", count="exact").execute()
+    bb_sched   = sb.table("matches").select("id", count="exact").eq("sport", "basketball").eq("status", "scheduled").execute()
+
+    models_dir = Path("/app/ml/models")
+    return {
+        "basketball": {
+            "matches_total": bb_matches.count,
+            "matches_scheduled": bb_sched.count,
+            "stats_rows": bb_stats.count,
+            "model_ready": (models_dir / "basketball_v1.pkl").exists(),
+        },
+        "football": {
+            "matches_total": fb_matches.count,
+            "stats_rows": fb_stats.count,
+            "model_ready": (models_dir / "football_v1.pkl").exists(),
+        },
+    }
+
 @app.get("/admin/debug")
 async def admin_debug(token: str):
     """Show today's scheduled matches in DB + model file status."""
