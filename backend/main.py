@@ -94,6 +94,90 @@ async def admin_train(sport: str, token: str, background_tasks: BackgroundTasks)
         background_tasks.add_task(_run_bg, ["python", "-m", "ml.train", "--sport", sport])
     return {"status": f"Training {sport} started — watch Railway logs (2-3 mins)"}
 
+@app.get("/admin/predict-debug")
+async def admin_predict_debug(token: str):
+    """Runs prediction logic for today's football matches and shows exactly what fails."""
+    _check(token)
+    import traceback
+    import pandas as pd
+    from datetime import datetime, timezone, timedelta
+    from supabase import create_client
+    from config import get_settings
+    from ml.features import build_inference_features_football
+    from ml.predict import load_model
+
+    s = get_settings()
+    sb = create_client(s.supabase_url, s.supabase_service_role_key)
+
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_end = today_start + timedelta(days=1)
+
+    FOOTBALL_LEAGUES = ["Premier League", "La Liga", "Bundesliga", "Serie A", "Ligue 1"]
+
+    matches_res = sb.table("matches").select(
+        "id,home_team_id,away_team_id,league,start_time,status,result,"
+        "home_team:teams!home_team_id(name),away_team:teams!away_team_id(name)"
+    ).in_("league", FOOTBALL_LEAGUES).execute()
+    stats_res = sb.table("team_stats_football").select("*").execute()
+
+    matches_df = pd.DataFrame(matches_res.data)
+    stats_df = pd.DataFrame(stats_res.data)
+    if not matches_df.empty:
+        matches_df["start_time"] = pd.to_datetime(matches_df["start_time"], utc=True)
+
+    today_matches = matches_df[
+        (matches_df["start_time"] >= today_start) &
+        (matches_df["start_time"] < today_end) &
+        (matches_df["status"] == "scheduled")
+    ] if not matches_df.empty else pd.DataFrame()
+
+    results = []
+    for _, match in today_matches.iterrows():
+        home_name = (match.get("home_team") or {}).get("name", "?")
+        away_name = (match.get("away_team") or {}).get("name", "?")
+        home_id = match["home_team_id"]
+        away_id = match["away_team_id"]
+        match_time = match["start_time"].to_pydatetime()
+
+        info = {"match": f"{home_name} vs {away_name}", "league": match["league"]}
+
+        # Check historical matches per team
+        for label, tid in [("home", home_id), ("away", away_id)]:
+            past = matches_df[
+                (matches_df["start_time"] < match_time) &
+                ((matches_df["home_team_id"] == tid) | (matches_df["away_team_id"] == tid)) &
+                (matches_df["result"].isin(["home", "draw", "away"]))
+            ]
+            team_stats = stats_df[stats_df["team_id"] == tid]
+            past_stats = team_stats[team_stats["match_id"].isin(past["id"])]
+            info[f"{label}_past_matches"] = len(past)
+            info[f"{label}_past_stats"] = len(past_stats)
+
+        try:
+            model_artifact = load_model("football")
+            feats = build_inference_features_football(home_id, away_id, match["league"], match_time, stats_df, matches_df)
+            if feats is None:
+                info["result"] = "FAILED: build_inference_features returned None"
+            else:
+                import numpy as np
+                X = np.array([[feats.get(c, 0.0) for c in model_artifact["feature_cols"]]])
+                probs = model_artifact["model"].predict_proba(X)[0]
+                info["result"] = "OK"
+                info["probs"] = {"home": round(float(probs[0]),3), "draw": round(float(probs[1]),3), "away": round(float(probs[2]),3)}
+        except Exception as e:
+            info["result"] = f"ERROR: {e}"
+            info["traceback"] = traceback.format_exc()[-500:]
+
+        results.append(info)
+
+    return {
+        "total_matches_in_db": len(matches_df),
+        "total_stats_rows": len(stats_df),
+        "today_matches_found": len(today_matches),
+        "details": results,
+    }
+
 @app.get("/admin/status")
 async def admin_status(token: str):
     """Shows DB record counts — poll this to track ingestion progress."""
