@@ -26,7 +26,6 @@ import pandas as pd
 from datetime import datetime
 from pathlib import Path
 
-from sklearn.calibration import CalibratedClassifierCV
 from sklearn.metrics import brier_score_loss, roc_auc_score, accuracy_score
 from sklearn.preprocessing import label_binarize
 import lightgbm as lgb
@@ -120,13 +119,10 @@ def train_basketball(supabase) -> dict:
         callbacks=[lgb.early_stopping(50, verbose=False), lgb.log_evaluation(50)],
     )
 
-    # Calibrate probabilities
-    calibrated = CalibratedClassifierCV(base_model, cv="prefit", method="isotonic")
-    calibrated.fit(X_val, y_val)
-
-    # Evaluate on test set
-    probs = calibrated.predict_proba(X_test)[:, 1]
-    preds = calibrated.predict(X_test)
+    # Evaluate on test set (LightGBM predict_proba is well-calibrated with early stopping)
+    probs = base_model.predict_proba(X_test)[:, 1]
+    preds = base_model.predict(X_test)
+    calibrated = base_model
     brier = brier_score_loss(y_test, probs)
     auc = roc_auc_score(y_test, probs)
     acc = accuracy_score(y_test, preds)
@@ -192,11 +188,9 @@ def train_football(supabase) -> dict:
         callbacks=[lgb.early_stopping(50, verbose=False), lgb.log_evaluation(50)],
     )
 
-    calibrated = CalibratedClassifierCV(base_model, cv="prefit", method="isotonic")
-    calibrated.fit(X_val, y_val)
-
-    probs = calibrated.predict_proba(X_test)
-    preds = calibrated.predict(X_test)
+    probs = base_model.predict_proba(X_test)
+    preds = base_model.predict(X_test)
+    calibrated = base_model
 
     # Multi-class Brier score (average over classes)
     y_bin = label_binarize(y_test, classes=[0, 1, 2])
