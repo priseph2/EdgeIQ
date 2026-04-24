@@ -113,10 +113,20 @@ def _save_prediction(supabase: Client, match_id: str, sport: str, pred: dict, va
 @router.get("/today", response_model=list[PredictionResponse])
 async def get_today_predictions(
     sport: Optional[str] = None,
+    date: Optional[str] = None,
     supabase: Client = Depends(get_supabase),
     redis=Depends(get_redis),
 ):
-    cache_key = f"predictions:today:{sport or 'all'}"
+    # date param: YYYY-MM-DD, defaults to today UTC
+    if date:
+        from datetime import date as date_type
+        parsed = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        day_start = parsed
+    else:
+        parsed = datetime.now(timezone.utc)
+        day_start = parsed.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    cache_key = f"predictions:{day_start.date()}:{sport or 'all'}"
     if redis:
         try:
             cached = redis.get(cache_key)
@@ -125,8 +135,7 @@ async def get_today_predictions(
         except Exception:
             redis = None
 
-    now = datetime.now(timezone.utc)
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start = day_start
     today_end = today_start + timedelta(days=1)
 
     sports = [sport] if sport else ["basketball", "football"]
