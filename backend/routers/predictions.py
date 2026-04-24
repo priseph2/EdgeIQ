@@ -169,30 +169,36 @@ async def get_today_predictions(
                 logger.warning(f"[{s}] Features returned None for {home_name} vs {away_name} (home_id={home_id})")
                 continue
 
-            best_odds = _get_best_odds(supabase, match_id)
-            value_flag = check_value_bet(
-                pred, best_odds["home"], best_odds.get("draw"), best_odds["away"]
-            )
-            _save_prediction(supabase, match_id, s, pred, value_flag)
+            try:
+                best_odds = _get_best_odds(supabase, match_id)
+                value_flag = check_value_bet(
+                    pred, best_odds["home"], best_odds.get("draw"), best_odds["away"]
+                )
+                try:
+                    _save_prediction(supabase, match_id, s, pred, value_flag)
+                except Exception as e:
+                    logger.warning(f"Could not save prediction for {match_id}: {e}")
 
-            results.append(PredictionResponse(
-                match_id=match_id,
-                home_team=home_name,
-                away_team=away_name,
-                league=match["league"],
-                sport=s,
-                start_time=str(match["start_time"]),
-                home_prob=pred["home_prob"],
-                draw_prob=pred.get("draw_prob"),
-                away_prob=pred["away_prob"],
-                confidence=pred["confidence"],
-                pick=pred["pick"],
-                value_flag=value_flag,
-                best_home_odds=best_odds["home"],
-                best_draw_odds=best_odds.get("draw"),
-                best_away_odds=best_odds["away"],
-                model_version=pred["model_version"],
-            ))
+                results.append(PredictionResponse(
+                    match_id=match_id,
+                    home_team=home_name,
+                    away_team=away_name,
+                    league=match["league"],
+                    sport=s,
+                    start_time=str(match["start_time"]),
+                    home_prob=pred["home_prob"],
+                    draw_prob=pred.get("draw_prob"),
+                    away_prob=pred["away_prob"],
+                    confidence=pred["confidence"],
+                    pick=pred["pick"],
+                    value_flag=value_flag,
+                    best_home_odds=best_odds["home"],
+                    best_draw_odds=best_odds.get("draw"),
+                    best_away_odds=best_odds["away"],
+                    model_version=pred["model_version"],
+                ))
+            except Exception as e:
+                logger.error(f"[{s}] Failed to build response for {home_name} vs {away_name}: {e}", exc_info=True)
 
     if redis and results:
         try:
