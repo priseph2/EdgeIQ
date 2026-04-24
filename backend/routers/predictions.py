@@ -99,9 +99,12 @@ async def get_today_predictions(
 ):
     cache_key = f"predictions:today:{sport or 'all'}"
     if redis:
-        cached = redis.get(cache_key)
-        if cached:
-            return json.loads(cached)
+        try:
+            cached = redis.get(cache_key)
+            if cached:
+                return json.loads(cached)
+        except Exception:
+            redis = None
 
     now = datetime.now(timezone.utc)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -167,7 +170,10 @@ async def get_today_predictions(
             ))
 
     if redis and results:
-        redis.setex(cache_key, 3600, json.dumps([r.model_dump() for r in results]))
+        try:
+            redis.setex(cache_key, 3600, json.dumps([r.model_dump() for r in results]))
+        except Exception:
+            pass
 
     return results
 
@@ -180,9 +186,12 @@ async def get_ai_analysis(
 ):
     cache_key = f"analysis:{match_id}"
     if redis:
-        cached = redis.get(cache_key)
-        if cached:
-            return json.loads(cached)
+        try:
+            cached = redis.get(cache_key)
+            if cached:
+                return json.loads(cached)
+        except Exception:
+            redis = None
 
     # Get match details
     match_res = supabase.table("matches").select(
@@ -253,7 +262,10 @@ async def get_ai_analysis(
         .eq("id", pred["id"]).execute()
 
     if redis:
-        redis.setex(cache_key, PREDICTIONS_CACHE_TTL, json.dumps(analysis))
+        try:
+            redis.setex(cache_key, PREDICTIONS_CACHE_TTL, json.dumps(analysis))
+        except Exception:
+            pass
 
     return analysis
 

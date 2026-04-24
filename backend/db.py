@@ -15,10 +15,13 @@ def get_supabase() -> Client:
 def get_redis():
     """Returns Redis client or None if not configured."""
     s = get_settings()
-    if not s.upstash_redis_url or not s.upstash_redis_token:
+    url = (s.upstash_redis_url or "").strip()
+    token = (s.upstash_redis_token or "").strip()
+    if not url or not token or not url.startswith("https://"):
         return None
     try:
         from upstash_redis import Redis
-        return Redis(url=s.upstash_redis_url, token=s.upstash_redis_token)
+        client = Redis(url=url, token=token)
+        return client
     except Exception:
         return None
