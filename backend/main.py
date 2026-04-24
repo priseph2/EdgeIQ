@@ -69,6 +69,13 @@ async def admin_ingest_nba(token: str, background_tasks: BackgroundTasks):
     background_tasks.add_task(_run_bg, ["python", "-m", "data.ingest_nba"])
     return {"status": "NBA ingestion started — watch Railway logs (5-8 mins)"}
 
+@app.get("/admin/ingest/nba/fixtures")
+async def admin_ingest_nba_fixtures(token: str, background_tasks: BackgroundTasks):
+    """Quick NBA fixture refresh — fetches next 14 days of games (~30s)."""
+    _check(token)
+    background_tasks.add_task(_run_bg, ["python", "-m", "data.ingest_nba_fixtures"])
+    return {"status": "NBA fixture refresh started — watch Railway logs (~30s)"}
+
 @app.get("/admin/ingest/football")
 async def admin_ingest_football(token: str, background_tasks: BackgroundTasks):
     _check(token)
