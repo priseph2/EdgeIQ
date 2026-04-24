@@ -149,11 +149,16 @@ def upsert_stats(supabase, match_uuid: str, game: dict, team_id_map: dict[str, s
 
 async def ingest_season(season: int, team_id_map: dict[str, str], supabase):
     logger.info(f"Ingesting NBA season {season}...")
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with httpx.AsyncClient(timeout=60) as client:
         page = 1
         total_games = 0
         while True:
-            data = await fetch_games(client, season, page)
+            try:
+                data = await fetch_games(client, season, page)
+            except Exception as e:
+                logger.warning(f"Season {season} page {page} failed: {e} — stopping")
+                break
+
             games = data.get("data", [])
             if not games:
                 break
@@ -169,7 +174,7 @@ async def ingest_season(season: int, team_id_map: dict[str, str], supabase):
                 break
             page += 1
 
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(1.0)  # respect free tier: ~60 req/min max
 
         logger.info(f"Season {season}: {total_games} games ingested")
 
