@@ -75,6 +75,13 @@ async def admin_ingest_football(token: str, background_tasks: BackgroundTasks):
     background_tasks.add_task(_run_bg, ["python", "-m", "data.ingest_football"])
     return {"status": "Football ingestion started — watch Railway logs (8-10 mins)"}
 
+@app.get("/admin/ingest/fixtures")
+async def admin_ingest_fixtures(token: str, background_tasks: BackgroundTasks):
+    """Quick fixture refresh — fetches only the current matchday for all leagues (~30s)."""
+    _check(token)
+    background_tasks.add_task(_run_bg, ["python", "-m", "data.ingest_fixtures"])
+    return {"status": "Fixture refresh started — watch Railway logs (~30s)"}
+
 @app.get("/admin/train/{sport}")
 async def admin_train(sport: str, token: str, background_tasks: BackgroundTasks):
     if sport not in ("basketball", "football", "all"):
@@ -86,3 +93,42 @@ async def admin_train(sport: str, token: str, background_tasks: BackgroundTasks)
     else:
         background_tasks.add_task(_run_bg, ["python", "-m", "ml.train", "--sport", sport])
     return {"status": f"Training {sport} started — watch Railway logs (2-3 mins)"}
+
+@app.get("/admin/debug")
+async def admin_debug(token: str):
+    """Show today's scheduled matches in DB + model file status."""
+    _check(token)
+    from datetime import datetime, timezone, timedelta
+    from pathlib import Path
+    from supabase import create_client
+    from config import get_settings
+
+    s = get_settings()
+    sb = create_client(s.supabase_url, s.supabase_service_role_key)
+
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    today_end = (now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)).isoformat()
+
+    football_today = sb.table("matches").select("id,league,start_time,status").eq("sport", "football")\
+        .gte("start_time", today_start).lt("start_time", today_end).execute()
+    basketball_today = sb.table("matches").select("id,league,start_time,status").eq("sport", "basketball")\
+        .gte("start_time", today_start).lt("start_time", today_end).execute()
+
+    football_sched = sb.table("matches").select("id", count="exact").eq("sport", "football")\
+        .eq("status", "scheduled").execute()
+    basketball_sched = sb.table("matches").select("id", count="exact").eq("sport", "basketball")\
+        .eq("status", "scheduled").execute()
+
+    models_dir = Path("/app/ml/models")
+    return {
+        "server_time_utc": now.isoformat(),
+        "today_football": football_today.data,
+        "today_basketball": basketball_today.data,
+        "total_scheduled_football": football_sched.count,
+        "total_scheduled_basketball": basketball_sched.count,
+        "models_on_disk": {
+            "football_v1": (models_dir / "football_v1.pkl").exists(),
+            "basketball_v1": (models_dir / "basketball_v1.pkl").exists(),
+        },
+    }

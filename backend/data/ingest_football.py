@@ -44,7 +44,12 @@ RAPIDAPI_LEAGUE_IDS = {
     "Ligue 1": 61,
 }
 
-SEASONS_TO_FETCH = [2022, 2023, 2024]
+def _current_seasons() -> list[int]:
+    now = datetime.utcnow()
+    # Football seasons are labelled by start year (2024 = 2024/25 season, starts Aug)
+    current = now.year if now.month >= 8 else now.year - 1
+    return [current - 2, current - 1, current]
+
 SPORT = "football"
 
 
@@ -248,7 +253,7 @@ async def run():
     logging.basicConfig(level=logging.INFO)
     supabase = get_supabase()
 
-    for season in SEASONS_TO_FETCH:
+    for season in _current_seasons():
         for code, name in LEAGUE_CODES.items():
             try:
                 await ingest_league_season(code, name, season, supabase)

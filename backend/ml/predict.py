@@ -22,9 +22,27 @@ MODELS_DIR = Path(__file__).parent / "models"
 _model_cache: dict = {}
 
 
+def _download_model(sport: str, path: Path):
+    """Try to restore model from Supabase Storage if not on disk."""
+    try:
+        from supabase import create_client
+        from config import get_settings
+        s = get_settings()
+        sb = create_client(s.supabase_url, s.supabase_service_role_key)
+        data = sb.storage.from_("models").download(f"{sport}_v1.pkl")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "wb") as f:
+            f.write(data)
+        logger.info(f"Restored {sport} model from Supabase Storage")
+    except Exception as e:
+        logger.warning(f"Could not restore {sport} model from storage: {e}")
+
+
 def load_model(sport: str) -> dict:
     if sport not in _model_cache:
         path = MODELS_DIR / f"{sport}_v1.pkl"
+        if not path.exists():
+            _download_model(sport, path)
         if not path.exists():
             raise FileNotFoundError(f"Model not found: {path}. Run ml.train first.")
         _model_cache[sport] = joblib.load(path)

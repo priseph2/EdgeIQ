@@ -48,6 +48,23 @@ def get_supabase():
     return create_client(s.supabase_url, s.supabase_service_role_key)
 
 
+def _upload_model(supabase, path: Path):
+    """Upload model pkl to Supabase Storage so it survives container restarts."""
+    try:
+        try:
+            supabase.storage.create_bucket("models", options={"public": False})
+        except Exception:
+            pass  # bucket already exists
+        with open(path, "rb") as f:
+            data = f.read()
+        supabase.storage.from_("models").upload(
+            path.name, data, {"upsert": "true", "content-type": "application/octet-stream"}
+        )
+        logger.info(f"Model {path.name} uploaded to Supabase Storage")
+    except Exception as e:
+        logger.warning(f"Could not upload model to Supabase Storage: {e}")
+
+
 def load_basketball_data(supabase) -> tuple[pd.DataFrame, pd.DataFrame]:
     matches = supabase.table("matches").select("*").in_("league", BASKETBALL_LEAGUES)\
         .eq("status", "finished").execute()
@@ -140,6 +157,7 @@ def train_basketball(supabase) -> dict:
         "sport": "basketball",
     }, model_path)
     logger.info(f"Basketball model saved to {model_path}")
+    _upload_model(supabase, model_path)
 
     return {"brier": brier, "auc": auc, "accuracy": acc}
 
@@ -211,6 +229,7 @@ def train_football(supabase) -> dict:
         "sport": "football",
     }, model_path)
     logger.info(f"Football model saved to {model_path}")
+    _upload_model(supabase, model_path)
 
     return {"brier": brier, "auc": auc, "accuracy": acc}
 
