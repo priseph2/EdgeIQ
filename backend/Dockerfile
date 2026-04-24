@@ -15,4 +15,4 @@ RUN mkdir -p models
 
 EXPOSE 8000
 
-CMD ["sh", "start.sh"]
+CMD ["bash", "start.sh"]
