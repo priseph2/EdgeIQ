@@ -46,12 +46,12 @@ def get_supabase():
 
 
 async def fetch_odds(client: httpx.AsyncClient, sport_key: str) -> list[dict]:
+    regions = SPORT_REGIONS.get(sport_key, "eu,uk")
     params = {
         "apiKey": get_settings().odds_api_key,
-        "regions": SPORT_REGIONS.get(sport_key, "eu,uk"),
+        "regions": regions,
         "markets": "h2h",
         "oddsFormat": "decimal",
-        "bookmakers": ",".join(BOOKMAKERS),
     }
     r = await client.get(f"{ODDS_API_BASE}/sports/{sport_key}/odds", params=params)
     if r.status_code == 422:
@@ -201,7 +201,7 @@ def detect_value_bets(supabase, match_uuid: str):
 async def run_once():
     supabase = get_supabase()
     async with httpx.AsyncClient(timeout=30) as client:
-        for sport_key in SPORT_KEYS:
+        for sport_key in SPORT_REGIONS:
             try:
                 events = await fetch_odds(client, sport_key)
                 for event in events:
