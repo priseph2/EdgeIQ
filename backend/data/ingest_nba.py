@@ -18,10 +18,15 @@ from config import get_settings
 logger = logging.getLogger(__name__)
 
 BALLDONTLIE_BASE = "https://api.balldontlie.io/v1"
-CURRENT_SEASON = 2024
-SEASONS_TO_FETCH = [2022, 2023, 2024]
 LEAGUE = "NBA"
 SPORT = "basketball"
+
+
+def _current_nba_seasons() -> list[int]:
+    now = datetime.utcnow()
+    # NBA season starts in October; season label = start year
+    current = now.year if now.month >= 10 else now.year - 1
+    return [current - 2, current - 1, current]
 
 
 def get_supabase():
@@ -175,7 +180,7 @@ async def run():
     team_id_map = upsert_teams(supabase, raw_teams)
     logger.info(f"Upserted {len(team_id_map)} teams")
 
-    for season in SEASONS_TO_FETCH:
+    for season in _current_nba_seasons():
         await ingest_season(season, team_id_map, supabase)
 
     logger.info("NBA ingestion complete")
