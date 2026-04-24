@@ -46,7 +46,24 @@ async def job_retrain_models():
         logger.error(f"Retraining job failed: {e}")
 
 
-async def job_daily_digest():
+async def job_refresh_fixtures():
+    """Refresh football + NBA fixtures daily so upcoming matches are always in DB."""
+    import subprocess, sys
+    logger.info("Refreshing fixtures...")
+    for module in ["data.ingest_fixtures", "data.ingest_nba_fixtures"]:
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", module],
+                capture_output=True, text=True, timeout=300
+            )
+            logger.info(f"{module}: {result.stdout[-300:]}")
+            if result.returncode != 0:
+                logger.error(f"{module} failed: {result.stderr[-200:]}")
+        except Exception as e:
+            logger.error(f"{module} job error: {e}")
+
+
+
     from telegram_bot import send_daily_digest
     try:
         await send_daily_digest()
@@ -92,6 +109,13 @@ async def job_settle_bets():
 
 def create_scheduler() -> AsyncIOScheduler:
     scheduler = AsyncIOScheduler(timezone=str(LAGOS_TZ))
+
+    # Fixture refresh daily at 6am Lagos time (before morning predictions)
+    scheduler.add_job(
+        job_refresh_fixtures,
+        CronTrigger(hour=6, minute=0, timezone=LAGOS_TZ),
+        id="refresh_fixtures"
+    )
 
     # Odds ingestion every 60 seconds
     scheduler.add_job(job_ingest_odds, IntervalTrigger(seconds=60), id="ingest_odds")

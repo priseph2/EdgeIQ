@@ -19,7 +19,12 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("EdgeIQ backend starting up")
+    from scheduler import create_scheduler
+    scheduler = create_scheduler()
+    scheduler.start()
+    logger.info("Scheduler started")
     yield
+    scheduler.shutdown(wait=False)
     logger.info("EdgeIQ backend shutting down")
 
 
