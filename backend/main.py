@@ -110,8 +110,11 @@ async def admin_debug(token: str):
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
     today_end = (now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)).isoformat()
 
-    football_today = sb.table("matches").select("id,league,start_time,status").eq("sport", "football")\
-        .gte("start_time", today_start).lt("start_time", today_end).execute()
+    football_today = sb.table("matches").select(
+        "id,league,start_time,status,home_team_id,away_team_id,"
+        "home_team:teams!home_team_id(name),away_team:teams!away_team_id(name)"
+    ).eq("sport", "football").gte("start_time", today_start).lt("start_time", today_end).execute()
+
     basketball_today = sb.table("matches").select("id,league,start_time,status").eq("sport", "basketball")\
         .gte("start_time", today_start).lt("start_time", today_end).execute()
 
@@ -127,7 +130,7 @@ async def admin_debug(token: str):
             tid = m.get(col)
             if tid and tid not in team_stats:
                 cnt = sb.table("team_stats_football").select("id", count="exact").eq("team_id", tid).execute()
-                team_stats[tid] = cnt.count
+                team_stats[tid] = {"count": cnt.count, "name": (m.get("home_team") or m.get("away_team") or {}).get("name")}
 
     models_dir = Path("/app/ml/models")
     return {
