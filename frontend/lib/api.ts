@@ -1,4 +1,4 @@
-const BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+const BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "https://edgeiq-production-52f2.up.railway.app";
 
 export interface Prediction {
   match_id: string;
