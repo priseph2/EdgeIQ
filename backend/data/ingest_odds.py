@@ -79,6 +79,47 @@ def find_match_uuid(supabase, home_name: str, away_name: str) -> str | None:
     return None
 
 
+def _find_or_create_team(supabase, name: str) -> str | None:
+    """Find NBA team by fuzzy name match; create if not found."""
+    res = supabase.table("teams").select("id,name").eq("sport", "basketball").execute()
+    name_lower = name.lower()
+    for row in (res.data or []):
+        db_name = row["name"].lower()
+        if name_lower in db_name or db_name in name_lower:
+            return row["id"]
+    r = supabase.table("teams").insert({
+        "name": name, "sport": "basketball", "league": "NBA",
+    }).execute()
+    return r.data[0]["id"] if r.data else None
+
+
+def find_or_create_nba_match(supabase, home_name: str, away_name: str, commence_time: str) -> str | None:
+    """Find existing scheduled match or auto-create one from Odds API data."""
+    match_uuid = find_match_uuid(supabase, home_name, away_name)
+    if match_uuid:
+        return match_uuid
+
+    home_uuid = _find_or_create_team(supabase, home_name)
+    away_uuid = _find_or_create_team(supabase, away_name)
+    if not home_uuid or not away_uuid:
+        logger.warning(f"Could not find/create teams for {home_name} vs {away_name}")
+        return None
+
+    r = supabase.table("matches").insert({
+        "home_team_id": home_uuid,
+        "away_team_id": away_uuid,
+        "sport": "basketball",
+        "league": "NBA",
+        "start_time": commence_time,
+        "status": "scheduled",
+        "draw_possible": False,
+    }).execute()
+    if r.data:
+        logger.info(f"Auto-created NBA match: {home_name} vs {away_name} at {commence_time}")
+        return r.data[0]["id"]
+    return None
+
+
 def parse_h2h_outcomes(outcomes: list[dict], home_name: str, away_name: str) -> dict:
     result = {"home": None, "draw": None, "away": None}
     for o in outcomes:
@@ -92,11 +133,18 @@ def parse_h2h_outcomes(outcomes: list[dict], home_name: str, away_name: str) -> 
     return result
 
 
-async def process_event(supabase, event: dict):
+async def process_event(supabase, event: dict, sport_key: str):
     home_name = event["home_team"]
     away_name = event["away_team"]
-    match_uuid = find_match_uuid(supabase, home_name, away_name)
+    commence_time = event.get("commence_time", "")
+
+    if sport_key == "basketball_nba":
+        match_uuid = find_or_create_nba_match(supabase, home_name, away_name, commence_time)
+    else:
+        match_uuid = find_match_uuid(supabase, home_name, away_name)
+
     if not match_uuid:
+        logger.debug(f"No match found for {home_name} vs {away_name} ({sport_key})")
         return
 
     now = datetime.now(timezone.utc).isoformat()
@@ -205,7 +253,7 @@ async def run_once():
             try:
                 events = await fetch_odds(client, sport_key)
                 for event in events:
-                    await process_event(supabase, event)
+                    await process_event(supabase, event, sport_key)
                 await asyncio.sleep(2)
             except Exception as e:
                 logger.error(f"Odds ingestion failed for {sport_key}: {e}")
