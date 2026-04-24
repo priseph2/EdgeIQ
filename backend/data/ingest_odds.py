@@ -18,14 +18,14 @@ logger = logging.getLogger(__name__)
 
 ODDS_API_BASE = "https://api.the-odds-api.com/v4"
 
-SPORT_KEYS = [
-    "basketball_nba",
-    "soccer_epl",
-    "soccer_spain_la_liga",
-    "soccer_germany_bundesliga",
-    "soccer_italy_serie_a",
-    "soccer_france_ligue_one",
-]
+SPORT_REGIONS = {
+    "basketball_nba": "us,eu",       # NBA covered by US books + some EU
+    "soccer_epl": "eu,uk",
+    "soccer_spain_la_liga": "eu,uk",
+    "soccer_germany_bundesliga": "eu,uk",
+    "soccer_italy_serie_a": "eu,uk",
+    "soccer_france_ligue_one": "eu,uk",
+}
 
 BOOKMAKERS = [
     "pinnacle",
@@ -34,6 +34,9 @@ BOOKMAKERS = [
     "unibet",
     "williamhill",
     "bet365",
+    "draftkings",
+    "fanduel",
+    "betmgm",
 ]
 
 
@@ -45,7 +48,7 @@ def get_supabase():
 async def fetch_odds(client: httpx.AsyncClient, sport_key: str) -> list[dict]:
     params = {
         "apiKey": get_settings().odds_api_key,
-        "regions": "eu,uk",
+        "regions": SPORT_REGIONS.get(sport_key, "eu,uk"),
         "markets": "h2h",
         "oddsFormat": "decimal",
         "bookmakers": ",".join(BOOKMAKERS),
