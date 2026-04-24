@@ -17,6 +17,7 @@ class Settings(BaseSettings):
 
     upstash_redis_url: str = ""
     upstash_redis_token: str = ""
+    admin_token: str = ""
 
     environment: str = "development"
     backend_url: str = "http://localhost:8000"

@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from routers.predictions import router as predictions_router
 from routers.bets import router as bets_router
+from routers.admin import router as admin_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -39,6 +40,7 @@ app.add_middleware(
 
 app.include_router(predictions_router)
 app.include_router(bets_router)
+app.include_router(admin_router)
 
 
 @app.get("/health")
