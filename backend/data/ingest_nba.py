@@ -34,6 +34,11 @@ def get_supabase():
     return create_client(s.supabase_url, s.supabase_service_role_key)
 
 
+def _headers() -> dict:
+    key = get_settings().balldontlie_api_key
+    return {"Authorization": key} if key else {}
+
+
 async def fetch_all_teams(client: httpx.AsyncClient) -> list[dict]:
     teams = []
     cursor = None
@@ -41,7 +46,7 @@ async def fetch_all_teams(client: httpx.AsyncClient) -> list[dict]:
         params = {"per_page": 100}
         if cursor:
             params["cursor"] = cursor
-        r = await client.get(f"{BALLDONTLIE_BASE}/teams", params=params)
+        r = await client.get(f"{BALLDONTLIE_BASE}/teams", params=params, headers=_headers())
         r.raise_for_status()
         data = r.json()
         teams.extend(data.get("data", []))
@@ -53,7 +58,7 @@ async def fetch_all_teams(client: httpx.AsyncClient) -> list[dict]:
 
 async def fetch_games(client: httpx.AsyncClient, season: int, page: int = 1) -> dict:
     params = {"seasons[]": season, "per_page": 100, "page": page}
-    r = await client.get(f"{BALLDONTLIE_BASE}/games", params=params)
+    r = await client.get(f"{BALLDONTLIE_BASE}/games", params=params, headers=_headers())
     r.raise_for_status()
     return r.json()
 

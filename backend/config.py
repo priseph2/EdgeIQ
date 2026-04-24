@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
 
+    balldontlie_api_key: str = ""
     upstash_redis_url: str = ""
     upstash_redis_token: str = ""
     admin_token: str = ""
