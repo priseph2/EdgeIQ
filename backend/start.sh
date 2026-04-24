@@ -4,6 +4,9 @@ set -e
 echo "=== EdgeIQ Backend Startup ==="
 mkdir -p models
 
+echo "Installing dependencies..."
+pip install -q -r requirements.txt
+
 # Run ingestion + training in background so uvicorn starts immediately
 if [ "${RUN_INGESTION_ON_START:-false}" = "true" ]; then
   (
