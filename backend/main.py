@@ -120,6 +120,15 @@ async def admin_debug(token: str):
     basketball_sched = sb.table("matches").select("id", count="exact").eq("sport", "basketball")\
         .eq("status", "scheduled").execute()
 
+    # Check whether today's match teams have historical stats
+    team_stats = {}
+    for m in football_today.data:
+        for col in ("home_team_id", "away_team_id"):
+            tid = m.get(col)
+            if tid and tid not in team_stats:
+                cnt = sb.table("team_stats_football").select("id", count="exact").eq("team_id", tid).execute()
+                team_stats[tid] = cnt.count
+
     models_dir = Path("/app/ml/models")
     return {
         "server_time_utc": now.isoformat(),
@@ -127,6 +136,7 @@ async def admin_debug(token: str):
         "today_basketball": basketball_today.data,
         "total_scheduled_football": football_sched.count,
         "total_scheduled_basketball": basketball_sched.count,
+        "team_stats_counts": team_stats,
         "models_on_disk": {
             "football_v1": (models_dir / "football_v1.pkl").exists(),
             "basketball_v1": (models_dir / "basketball_v1.pkl").exists(),

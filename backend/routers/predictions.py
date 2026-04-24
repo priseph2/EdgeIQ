@@ -58,7 +58,10 @@ def _load_data(supabase: Client, sport: str) -> tuple[pd.DataFrame, pd.DataFrame
     ).in_("league", leagues).execute()
 
     stats = supabase.table(stats_table).select("*").execute()
-    return pd.DataFrame(matches.data), pd.DataFrame(stats.data)
+    df = pd.DataFrame(matches.data)
+    if not df.empty:
+        df["start_time"] = pd.to_datetime(df["start_time"], utc=True)
+    return df, pd.DataFrame(stats.data)
 
 
 def _get_best_odds(supabase: Client, match_id: str) -> dict:
@@ -119,10 +122,12 @@ async def get_today_predictions(
             continue
 
         today_matches = matches_df[
-            (pd.to_datetime(matches_df["start_time"], utc=True) >= today_start) &
-            (pd.to_datetime(matches_df["start_time"], utc=True) < today_end) &
+            (matches_df["start_time"] >= today_start) &
+            (matches_df["start_time"] < today_end) &
             (matches_df["status"] == "scheduled")
         ]
+
+        logger.info(f"[{s}] today_matches={len(today_matches)}, total_matches={len(matches_df)}, stats={len(stats_df)}")
 
         for _, match in today_matches.iterrows():
             match_id = match["id"]
@@ -130,7 +135,7 @@ async def get_today_predictions(
             away_id = match["away_team_id"]
             home_name = match["home_team"]["name"] if isinstance(match.get("home_team"), dict) else "Home"
             away_name = match["away_team"]["name"] if isinstance(match.get("away_team"), dict) else "Away"
-            match_time = pd.to_datetime(match["start_time"], utc=True).to_pydatetime()
+            match_time = match["start_time"].to_pydatetime()
 
             try:
                 if s == "basketball":
@@ -140,8 +145,12 @@ async def get_today_predictions(
             except FileNotFoundError:
                 logger.warning(f"Model not trained yet for {s}")
                 continue
+            except Exception as e:
+                logger.error(f"[{s}] Prediction error for {home_name} vs {away_name}: {e}", exc_info=True)
+                continue
 
             if pred is None:
+                logger.warning(f"[{s}] Features returned None for {home_name} vs {away_name} (home_id={home_id})")
                 continue
 
             best_odds = _get_best_odds(supabase, match_id)
