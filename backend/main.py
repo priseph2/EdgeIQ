@@ -115,14 +115,24 @@ async def admin_predict_debug(token: str):
 
     FOOTBALL_LEAGUES = ["Premier League", "La Liga", "Bundesliga", "Serie A", "Ligue 1"]
 
-    matches_res = sb.table("matches").select(
+    def fetch_all(query):
+        data, page, size = [], 0, 1000
+        while True:
+            res = query.range(page * size, (page + 1) * size - 1).execute()
+            data.extend(res.data or [])
+            if len(res.data or []) < size:
+                break
+            page += 1
+        return data
+
+    matches_data = fetch_all(sb.table("matches").select(
         "id,home_team_id,away_team_id,league,start_time,status,result,"
         "home_team:teams!home_team_id(name),away_team:teams!away_team_id(name)"
-    ).in_("league", FOOTBALL_LEAGUES).execute()
-    stats_res = sb.table("team_stats_football").select("*").execute()
+    ).in_("league", FOOTBALL_LEAGUES))
+    stats_data = fetch_all(sb.table("team_stats_football").select("*"))
 
-    matches_df = pd.DataFrame(matches_res.data)
-    stats_df = pd.DataFrame(stats_res.data)
+    matches_df = pd.DataFrame(matches_data)
+    stats_df = pd.DataFrame(stats_data)
     if not matches_df.empty:
         matches_df["start_time"] = pd.to_datetime(matches_df["start_time"], utc=True)
 

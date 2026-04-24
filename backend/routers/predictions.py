@@ -48,20 +48,36 @@ class PredictionResponse(BaseModel):
     model_version: str
 
 
+def _fetch_all(query) -> list:
+    """Paginate through Supabase results (default limit is 1000 rows)."""
+    all_data = []
+    page = 0
+    page_size = 1000
+    while True:
+        res = query.range(page * page_size, (page + 1) * page_size - 1).execute()
+        all_data.extend(res.data or [])
+        if len(res.data or []) < page_size:
+            break
+        page += 1
+    return all_data
+
+
 def _load_data(supabase: Client, sport: str) -> tuple[pd.DataFrame, pd.DataFrame]:
     leagues = BASKETBALL_LEAGUES if sport == "basketball" else FOOTBALL_LEAGUES
     stats_table = "team_stats_basketball" if sport == "basketball" else "team_stats_football"
 
-    matches = supabase.table("matches").select(
-        "id, home_team_id, away_team_id, sport, league, start_time, status, result, draw_possible, "
-        "home_team:teams!home_team_id(id,name), away_team:teams!away_team_id(id,name)"
-    ).in_("league", leagues).execute()
+    matches_data = _fetch_all(
+        supabase.table("matches").select(
+            "id, home_team_id, away_team_id, sport, league, start_time, status, result, draw_possible, "
+            "home_team:teams!home_team_id(id,name), away_team:teams!away_team_id(id,name)"
+        ).in_("league", leagues)
+    )
+    stats_data = _fetch_all(supabase.table(stats_table).select("*"))
 
-    stats = supabase.table(stats_table).select("*").execute()
-    df = pd.DataFrame(matches.data)
+    df = pd.DataFrame(matches_data)
     if not df.empty:
         df["start_time"] = pd.to_datetime(df["start_time"], utc=True)
-    return df, pd.DataFrame(stats.data)
+    return df, pd.DataFrame(stats_data)
 
 
 def _get_best_odds(supabase: Client, match_id: str) -> dict:
