@@ -117,8 +117,14 @@ def create_scheduler() -> AsyncIOScheduler:
         id="refresh_fixtures"
     )
 
-    # Odds ingestion every 60 seconds
-    scheduler.add_job(job_ingest_odds, IntervalTrigger(seconds=60), id="ingest_odds")
+    # Odds ingestion 3x/day to stay within 500 req/month free tier
+    # 9am, 1pm, 6pm Lagos = before digest, midday, pre-evening-games
+    for hour in [9, 13, 18]:
+        scheduler.add_job(
+            job_ingest_odds,
+            CronTrigger(hour=hour, minute=0, timezone=LAGOS_TZ),
+            id=f"ingest_odds_{hour}h",
+        )
 
     # Model retraining every Sunday at 3am Lagos time
     scheduler.add_job(

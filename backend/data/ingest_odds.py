@@ -1,13 +1,10 @@
 """
 Live odds ingestion via The Odds API.
-Runs every 60s via APScheduler.
-Stores current odds + snapshot history.
+Runs 3x/day via APScheduler to stay within 500 req/month free tier.
 Triggers arb detection and value bet scanner after each update.
 
 Usage (one-shot):
   python -m data.ingest_odds
-
-Cron is handled by scheduler.py.
 """
 
 import asyncio
@@ -21,7 +18,6 @@ logger = logging.getLogger(__name__)
 
 ODDS_API_BASE = "https://api.the-odds-api.com/v4"
 
-# Sports keys used by The Odds API
 SPORT_KEYS = [
     "basketball_nba",
     "soccer_epl",
@@ -31,14 +27,13 @@ SPORT_KEYS = [
     "soccer_france_ligue_one",
 ]
 
-# Nigerian-accessible bookmakers + Pinnacle as sharp benchmark
 BOOKMAKERS = [
     "pinnacle",
     "betway",
-    "onexbet",    # 1xBet
-    "sport888",
+    "onexbet",
     "unibet",
     "williamhill",
+    "bet365",
 ]
 
 
@@ -60,23 +55,24 @@ async def fetch_odds(client: httpx.AsyncClient, sport_key: str) -> list[dict]:
         return []
     r.raise_for_status()
     remaining = r.headers.get("x-requests-remaining", "?")
-    logger.info(f"{sport_key}: {len(r.json())} events | {remaining} requests remaining")
+    used = r.headers.get("x-requests-used", "?")
+    logger.info(f"{sport_key}: {len(r.json())} events | used={used} remaining={remaining}")
     return r.json()
 
 
-def find_match_uuid(supabase, external_event_id: str, home_name: str, away_name: str) -> str | None:
-    res = supabase.table("matches").select("id").eq("external_id", f"odds:{external_event_id}").execute()
-    if res.data:
-        return res.data[0]["id"]
+def find_match_uuid(supabase, home_name: str, away_name: str) -> str | None:
+    """Fuzzy-match Odds API team names to our DB matches."""
+    res = supabase.table("matches").select(
+        "id, home_team:teams!home_team_id(name), away_team:teams!away_team_id(name)"
+    ).eq("status", "scheduled").execute()
 
-    res = supabase.table("matches").select("id, home_team:teams!home_team_id(name), away_team:teams!away_team_id(name)")\
-        .eq("status", "scheduled").execute()
     for row in (res.data or []):
-        ht = row.get("home_team", {}).get("name", "").lower()
-        at = row.get("away_team", {}).get("name", "").lower()
-        if home_name.lower() in ht or ht in home_name.lower():
-            if away_name.lower() in at or at in away_name.lower():
-                return row["id"]
+        ht = (row.get("home_team") or {}).get("name", "").lower()
+        at = (row.get("away_team") or {}).get("name", "").lower()
+        hn = home_name.lower()
+        an = away_name.lower()
+        if (hn in ht or ht in hn) and (an in at or at in an):
+            return row["id"]
     return None
 
 
@@ -96,20 +92,19 @@ def parse_h2h_outcomes(outcomes: list[dict], home_name: str, away_name: str) -> 
 async def process_event(supabase, event: dict):
     home_name = event["home_team"]
     away_name = event["away_team"]
-    match_uuid = find_match_uuid(supabase, event["id"], home_name, away_name)
+    match_uuid = find_match_uuid(supabase, home_name, away_name)
     if not match_uuid:
         return
 
     now = datetime.now(timezone.utc).isoformat()
     odds_rows = []
-    history_rows = []
 
     for bm in event.get("bookmakers", []):
         for market in bm.get("markets", []):
             if market["key"] != "h2h":
                 continue
             parsed = parse_h2h_outcomes(market["outcomes"], home_name, away_name)
-            row = {
+            odds_rows.append({
                 "match_id": match_uuid,
                 "bookmaker": bm["key"],
                 "market": "h2h",
@@ -117,68 +112,103 @@ async def process_event(supabase, event: dict):
                 "draw_odds": parsed["draw"],
                 "away_odds": parsed["away"],
                 "recorded_at": now,
-            }
-            odds_rows.append(row)
-            history_rows.append({**row, "snapshot_at": now})
+            })
 
     if odds_rows:
         supabase.table("odds").upsert(odds_rows, on_conflict="match_id,bookmaker,market").execute()
-        supabase.table("odds_history").insert(history_rows).execute()
+        supabase.table("odds_history").insert(odds_rows).execute()
+        detect_arb(supabase, match_uuid)
+        detect_value_bets(supabase, match_uuid)
 
 
 def detect_arb(supabase, match_uuid: str):
-    res = supabase.table("odds").select("*").eq("match_id", match_uuid).execute()
-    rows = res.data or []
+    rows = supabase.table("odds").select("*").eq("match_id", match_uuid).execute().data or []
     if not rows:
         return
 
-    best_home = max((r["home_odds"] or 0, r["bookmaker"]) for r in rows if r["home_odds"])
-    best_away = max((r["away_odds"] or 0, r["bookmaker"]) for r in rows if r["away_odds"])
-    draw_rows = [r for r in rows if r["draw_odds"]]
-    best_draw = max((r["draw_odds"] or 0, r["bookmaker"]) for r in draw_rows) if draw_rows else (0, None)
+    home_opts = [(r["home_odds"], r["bookmaker"]) for r in rows if r.get("home_odds")]
+    away_opts = [(r["away_odds"], r["bookmaker"]) for r in rows if r.get("away_odds")]
+    draw_opts = [(r["draw_odds"], r["bookmaker"]) for r in rows if r.get("draw_odds")]
 
-    h, hb = best_home
-    a, ab = best_away
-    d, db = best_draw
+    if not home_opts or not away_opts:
+        return
 
-    margin = 1/h + 1/a + (1/d if d else 0) if h and a else 1.0
+    h, hb = max(home_opts)
+    a, ab = max(away_opts)
+    d, db = max(draw_opts) if draw_opts else (0, None)
+
+    margin = 1/h + 1/a + (1/d if d else 0)
     if margin < 1.0:
         profit_pct = (1 - margin) * 100
-        total_stake = 1000
+        total = 1000
         stakes = {
-            "home": round(total_stake / (h * margin), 2),
-            "away": round(total_stake / (a * margin), 2),
+            "home": {"stake": round(total / (h * margin), 2), "book": hb},
+            "away": {"stake": round(total / (a * margin), 2), "book": ab},
         }
         if d:
-            stakes["draw"] = round(total_stake / (d * margin), 2)
+            stakes["draw"] = {"stake": round(total / (d * margin), 2), "book": db}
 
         supabase.table("arb_alerts").insert({
             "match_id": match_uuid,
             "profit_pct": round(profit_pct, 4),
             "stakes_json": stakes,
-            "best_home_book": hb,
-            "best_draw_book": db,
-            "best_away_book": ab,
             "notified": False,
         }).execute()
         logger.info(f"ARB FOUND match={match_uuid} profit={profit_pct:.2f}%")
 
 
-async def run_once():
-    logging.basicConfig(level=logging.INFO)
-    supabase = get_supabase()
+def detect_value_bets(supabase, match_uuid: str):
+    pred_res = supabase.table("predictions").select("*").eq("match_id", match_uuid)\
+        .order("created_at", desc=True).limit(1).execute()
+    if not pred_res.data:
+        return
+    pred = pred_res.data[0]
 
+    rows = supabase.table("odds").select("*").eq("match_id", match_uuid).execute().data or []
+    if not rows:
+        return
+
+    best_home = max((r["home_odds"] for r in rows if r.get("home_odds")), default=0)
+    best_draw = max((r["draw_odds"] for r in rows if r.get("draw_odds")), default=0)
+    best_away = max((r["away_odds"] for r in rows if r.get("away_odds")), default=0)
+
+    threshold = 0.05
+    for selection, model_prob, odds in [
+        ("home", pred.get("home_prob"), best_home),
+        ("draw", pred.get("draw_prob"), best_draw),
+        ("away", pred.get("away_prob"), best_away),
+    ]:
+        if not model_prob or not odds or odds <= 1.0:
+            continue
+        market_prob = 1.0 / odds
+        edge = model_prob - market_prob
+        if edge >= threshold:
+            supabase.table("value_bets").insert({
+                "match_id": match_uuid,
+                "selection": selection,
+                "edge_pct": round(edge * 100, 2),
+                "model_prob": round(model_prob, 4),
+                "market_prob": round(market_prob, 4),
+                "best_odds": odds,
+                "notified": False,
+            }).execute()
+            logger.info(f"VALUE BET: {match_uuid} {selection} edge={edge*100:.1f}%")
+
+
+async def run_once():
+    supabase = get_supabase()
     async with httpx.AsyncClient(timeout=30) as client:
         for sport_key in SPORT_KEYS:
             try:
                 events = await fetch_odds(client, sport_key)
                 for event in events:
                     await process_event(supabase, event)
-                    detect_arb(supabase, event["id"])
-                await asyncio.sleep(1)
+                await asyncio.sleep(2)
             except Exception as e:
                 logger.error(f"Odds ingestion failed for {sport_key}: {e}")
+    logger.info("Odds ingestion complete")
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     asyncio.run(run_once())

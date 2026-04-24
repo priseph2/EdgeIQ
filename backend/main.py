@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from routers.predictions import router as predictions_router
 from routers.bets import router as bets_router
+from routers.odds import router as odds_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -45,6 +46,7 @@ app.add_middleware(
 
 app.include_router(predictions_router)
 app.include_router(bets_router)
+app.include_router(odds_router)
 
 
 @app.get("/health")
@@ -86,6 +88,13 @@ async def admin_ingest_football(token: str, background_tasks: BackgroundTasks):
     _check(token)
     background_tasks.add_task(_run_bg, ["python", "-m", "data.ingest_football"])
     return {"status": "Football ingestion started — watch Railway logs (8-10 mins)"}
+
+@app.get("/admin/ingest/odds")
+async def admin_ingest_odds(token: str, background_tasks: BackgroundTasks):
+    """Manually trigger odds ingestion (uses ~6 of your 500 monthly requests)."""
+    _check(token)
+    background_tasks.add_task(_run_bg, ["python", "-m", "data.ingest_odds"])
+    return {"status": "Odds ingestion started — watch Railway logs (~30s)"}
 
 @app.get("/admin/ingest/fixtures")
 async def admin_ingest_fixtures(token: str, background_tasks: BackgroundTasks):
