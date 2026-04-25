@@ -10,6 +10,7 @@ Usage (one-shot):
 import asyncio
 import httpx
 import logging
+import unicodedata
 from datetime import datetime, timezone
 from supabase import create_client
 from config import get_settings
@@ -63,17 +64,23 @@ async def fetch_odds(client: httpx.AsyncClient, sport_key: str) -> list[dict]:
     return r.json()
 
 
+def _norm(text: str) -> str:
+    """Lowercase and strip accents for fuzzy matching."""
+    nfkd = unicodedata.normalize("NFKD", text)
+    return "".join(c for c in nfkd if not unicodedata.combining(c)).lower()
+
+
 def find_match_uuid(supabase, home_name: str, away_name: str) -> str | None:
     """Fuzzy-match Odds API team names to our DB matches."""
     res = supabase.table("matches").select(
         "id, home_team:teams!home_team_id(name), away_team:teams!away_team_id(name)"
     ).eq("status", "scheduled").execute()
 
+    hn = _norm(home_name)
+    an = _norm(away_name)
     for row in (res.data or []):
-        ht = (row.get("home_team") or {}).get("name", "").lower()
-        at = (row.get("away_team") or {}).get("name", "").lower()
-        hn = home_name.lower()
-        an = away_name.lower()
+        ht = _norm((row.get("home_team") or {}).get("name", ""))
+        at = _norm((row.get("away_team") or {}).get("name", ""))
         if (hn in ht or ht in hn) and (an in at or at in an):
             return row["id"]
     return None
