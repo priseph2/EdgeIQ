@@ -86,6 +86,8 @@ def predict_basketball(
         "predicted_total": predicted_total if predicted_total > 0 else None,
         "home_xg": None,
         "away_xg": None,
+        "home_goals_avg": None,
+        "away_goals_avg": None,
     }
 
 
@@ -121,6 +123,8 @@ def predict_football(
 
     home_xg = feats.get("home_xg_avg5", 0.0)
     away_xg = feats.get("away_xg_avg5", 0.0)
+    home_goals_avg = round(feats.get("home_goals_avg5", 0.0), 2)
+    away_goals_avg = round(feats.get("away_goals_avg5", 0.0), 2)
 
     return {
         "home_prob": round(home_prob, 4),
@@ -132,6 +136,8 @@ def predict_football(
         "predicted_total": None,
         "home_xg": round(home_xg, 2) if home_xg > 0 else None,
         "away_xg": round(away_xg, 2) if away_xg > 0 else None,
+        "home_goals_avg": home_goals_avg if home_goals_avg > 0 else None,
+        "away_goals_avg": away_goals_avg if away_goals_avg > 0 else None,
     }
 
 

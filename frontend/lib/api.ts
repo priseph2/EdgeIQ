@@ -20,6 +20,8 @@ export interface Prediction {
   predicted_total: number | null;
   home_xg: number | null;
   away_xg: number | null;
+  home_goals_avg: number | null;
+  away_goals_avg: number | null;
 }
 
 export interface ClaudeAnalysis {

@@ -139,16 +139,24 @@ export default function PredictionCard({ prediction: p }: Props) {
         </div>
       )}
 
-      {/* xG / Total score line */}
-      {(p.home_xg != null && p.away_xg != null) && (
-        <div className="flex items-center justify-between text-xs text-slate-500 px-0.5">
-          <span>xG</span>
-          <span className="font-medium text-slate-300">
-            {p.home_xg.toFixed(2)} <span className="text-slate-600">–</span> {p.away_xg.toFixed(2)}
-          </span>
-          <span>xG</span>
-        </div>
-      )}
+      {/* xG / Goals avg / Total score line */}
+      {(() => {
+        const hasXg = p.home_xg != null && p.away_xg != null;
+        const hasGoals = p.home_goals_avg != null && p.away_goals_avg != null;
+        if (!hasXg && !hasGoals) return null;
+        const label = hasXg ? "xG" : "Goals avg";
+        const home = hasXg ? p.home_xg!.toFixed(2) : p.home_goals_avg!.toFixed(2);
+        const away = hasXg ? p.away_xg!.toFixed(2) : p.away_goals_avg!.toFixed(2);
+        return (
+          <div className="flex items-center justify-between text-xs text-slate-500 px-0.5">
+            <span>{label}</span>
+            <span className="font-medium text-slate-300">
+              {home} <span className="text-slate-600">–</span> {away}
+            </span>
+            <span>{label}</span>
+          </div>
+        );
+      })()}
       {p.predicted_total != null && (
         <div className="flex items-center justify-between text-xs text-slate-500 px-0.5">
           <span>Predicted total</span>

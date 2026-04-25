@@ -49,6 +49,8 @@ class PredictionResponse(BaseModel):
     predicted_total: Optional[float] = None
     home_xg: Optional[float] = None
     away_xg: Optional[float] = None
+    home_goals_avg: Optional[float] = None
+    away_goals_avg: Optional[float] = None
 
 
 def _fetch_all(query) -> list:
@@ -237,6 +239,8 @@ async def get_today_predictions(
                     predicted_total=pred.get("predicted_total"),
                     home_xg=pred.get("home_xg"),
                     away_xg=pred.get("away_xg"),
+                    home_goals_avg=pred.get("home_goals_avg"),
+                    away_goals_avg=pred.get("away_goals_avg"),
                 ))
             except Exception as e:
                 logger.error(f"[{s}] Failed to build response for {home_name} vs {away_name}: {e}", exc_info=True)
