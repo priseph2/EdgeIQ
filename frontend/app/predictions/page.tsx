@@ -42,6 +42,7 @@ export default function PredictionsPage() {
   const [valueOnly, setValueOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
     setLoading(true);
@@ -49,7 +50,7 @@ export default function PredictionsPage() {
     fetchTodayPredictions(sport === "all" ? undefined : sport, date)
       .then((p) => { setPredictions(p); setLoading(false); })
       .catch(() => { setError(true); setLoading(false); });
-  }, [sport, date]);
+  }, [sport, date, retryCount]);
 
   const handleSportChange = (s: string) => {
     setSport(s);
@@ -177,7 +178,7 @@ export default function PredictionsPage() {
           <p className="text-red-400 text-sm">Failed to load predictions.</p>
           <p className="text-slate-600 text-xs mt-1">The backend may be starting up — try again in a moment.</p>
           <button
-            onClick={() => handleSportChange(sport)}
+            onClick={() => setRetryCount((c) => c + 1)}
             className="mt-3 px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-colors"
           >
             Retry
