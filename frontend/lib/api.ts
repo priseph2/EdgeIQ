@@ -17,6 +17,9 @@ export interface Prediction {
   best_draw_odds: number | null;
   best_away_odds: number | null;
   model_version: string;
+  predicted_total: number | null;
+  home_xg: number | null;
+  away_xg: number | null;
 }
 
 export interface ClaudeAnalysis {

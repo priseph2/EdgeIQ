@@ -117,6 +117,23 @@ export default function PredictionCard({ prediction: p }: Props) {
         </div>
       )}
 
+      {/* xG / Total score line */}
+      {(p.home_xg != null && p.away_xg != null) && (
+        <div className="flex items-center justify-between text-xs text-slate-500 px-0.5">
+          <span>xG</span>
+          <span className="font-medium text-slate-300">
+            {p.home_xg.toFixed(2)} <span className="text-slate-600">–</span> {p.away_xg.toFixed(2)}
+          </span>
+          <span>xG</span>
+        </div>
+      )}
+      {p.predicted_total != null && (
+        <div className="flex items-center justify-between text-xs text-slate-500 px-0.5">
+          <span>Predicted total</span>
+          <span className="font-medium text-slate-300">{p.predicted_total.toFixed(1)} pts</span>
+        </div>
+      )}
+
       {/* Pick summary */}
       <div className="flex items-center justify-between">
         <p className="text-sm text-slate-300">

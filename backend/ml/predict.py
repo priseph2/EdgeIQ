@@ -74,6 +74,8 @@ def predict_basketball(
 
     confidence = _confidence_label(max(home_prob, away_prob))
 
+    predicted_total = round(feats.get("home_pts_avg5", 0) + feats.get("away_pts_avg5", 0), 1)
+
     return {
         "home_prob": round(home_prob, 4),
         "draw_prob": None,
@@ -81,6 +83,9 @@ def predict_basketball(
         "confidence": confidence,
         "pick": "home" if home_prob > away_prob else "away",
         "model_version": "basketball_v1",
+        "predicted_total": predicted_total if predicted_total > 0 else None,
+        "home_xg": None,
+        "away_xg": None,
     }
 
 
@@ -114,6 +119,9 @@ def predict_football(
     pick_map = {0: "home", 1: "draw", 2: "away"}
     pick = pick_map[int(np.argmax(probs))]
 
+    home_xg = feats.get("home_xg_avg5", 0.0)
+    away_xg = feats.get("away_xg_avg5", 0.0)
+
     return {
         "home_prob": round(home_prob, 4),
         "draw_prob": round(draw_prob, 4),
@@ -121,6 +129,9 @@ def predict_football(
         "confidence": confidence,
         "pick": pick,
         "model_version": "football_v1",
+        "predicted_total": None,
+        "home_xg": round(home_xg, 2) if home_xg > 0 else None,
+        "away_xg": round(away_xg, 2) if away_xg > 0 else None,
     }
 
 

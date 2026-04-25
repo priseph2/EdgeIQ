@@ -46,6 +46,9 @@ class PredictionResponse(BaseModel):
     best_draw_odds: Optional[float]
     best_away_odds: Optional[float]
     model_version: str
+    predicted_total: Optional[float] = None
+    home_xg: Optional[float] = None
+    away_xg: Optional[float] = None
 
 
 def _fetch_all(query) -> list:
@@ -231,6 +234,9 @@ async def get_today_predictions(
                     best_draw_odds=best_odds.get("draw"),
                     best_away_odds=best_odds["away"],
                     model_version=pred["model_version"],
+                    predicted_total=pred.get("predicted_total"),
+                    home_xg=pred.get("home_xg"),
+                    away_xg=pred.get("away_xg"),
                 ))
             except Exception as e:
                 logger.error(f"[{s}] Failed to build response for {home_name} vs {away_name}: {e}", exc_info=True)
