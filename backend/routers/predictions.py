@@ -142,9 +142,20 @@ async def get_today_predictions(
     results = []
 
     for s in sports:
-        matches_df, stats_df = _load_data(supabase, s)
-        if matches_df.empty or stats_df.empty:
+        leagues = BASKETBALL_LEAGUES if s == "basketball" else FOOTBALL_LEAGUES
+        stats_table = "team_stats_basketball" if s == "basketball" else "team_stats_football"
+
+        # Load all historical matches (needed for rolling form features)
+        matches_data = _fetch_all(
+            supabase.table("matches").select(
+                "id, home_team_id, away_team_id, sport, league, start_time, status, result, draw_possible, "
+                "home_team:teams!home_team_id(id,name), away_team:teams!away_team_id(id,name)"
+            ).in_("league", leagues)
+        )
+        matches_df = pd.DataFrame(matches_data)
+        if matches_df.empty:
             continue
+        matches_df["start_time"] = pd.to_datetime(matches_df["start_time"], utc=True)
 
         today_matches = matches_df[
             (matches_df["start_time"] >= today_start) &
@@ -152,7 +163,22 @@ async def get_today_predictions(
             (matches_df["status"] == "scheduled")
         ]
 
-        logger.info(f"[{s}] today_matches={len(today_matches)}, total_matches={len(matches_df)}, stats={len(stats_df)}")
+        if today_matches.empty:
+            continue
+
+        # Only fetch stats for teams playing today — avoids loading 50k+ rows
+        team_ids = list(set(
+            today_matches["home_team_id"].tolist() + today_matches["away_team_id"].tolist()
+        ))
+        stats_data = _fetch_all(
+            supabase.table(stats_table).select("*").in_("team_id", team_ids)
+        )
+        stats_df = pd.DataFrame(stats_data)
+
+        logger.info(f"[{s}] today={len(today_matches)}, matches={len(matches_df)}, stats={len(stats_df)}")
+
+        if stats_df.empty:
+            continue
 
         for _, match in today_matches.iterrows():
             match_id = match["id"]
