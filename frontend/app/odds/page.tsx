@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from "react";
 import * as Tabs from "@radix-ui/react-tabs";
 import { fetchValueBets, fetchTodayOdds, fetchArbAlerts } from "@/lib/api";
 import type { ValueBet, OddsRow, ArbAlert } from "@/lib/api";
-import { cn, formatOdds, formatKickoff } from "@/lib/utils";
+import { cn, formatOdds, formatKickoff, formatDate } from "@/lib/utils";
 
 interface MatchGroup {
   match_id: string;
@@ -41,19 +41,28 @@ function best(vals: (number | null)[]): number {
   return Math.max(...vals.map((v) => v ?? 0));
 }
 
+function toLocalDateString(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
 export default function OddsPage() {
+  const today = toLocalDateString(new Date());
+  const [date, setDate] = useState(today);
   const [valueBets, setValueBets] = useState<ValueBet[]>([]);
   const [oddsRows, setOddsRows] = useState<OddsRow[]>([]);
   const [arbAlerts, setArbAlerts] = useState<ArbAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (d: string) => {
     setLoading(true);
     const [vb, odds, arb] = await Promise.all([
-      fetchValueBets(),
-      fetchTodayOdds(),
-      fetchArbAlerts(),
+      fetchValueBets(),          // always today — stale alerts are worthless
+      fetchTodayOdds(d),
+      fetchArbAlerts(),          // always today
     ]);
     setValueBets(vb);
     setOddsRows(odds);
@@ -62,19 +71,31 @@ export default function OddsPage() {
     setLoading(false);
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(date); }, [date, load]);
+
+  const shiftDate = (days: number) => {
+    const d = new Date(date + "T00:00:00");
+    d.setDate(d.getDate() + days);
+    const next = toLocalDateString(d);
+    // Don't allow going before today
+    if (next >= today) setDate(next);
+  };
+
+  const isToday = date === today;
+  const displayDate = isToday ? "Today" : formatDate(date + "T12:00:00");
 
   const matchGroups = groupByMatch(oddsRows);
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-white">Odds & Alerts</h1>
           <p className="text-sm text-slate-500 mt-0.5">
             Live odds comparison, value bets, and arbitrage opportunities
           </p>
         </div>
+
         <div className="flex items-center gap-3">
           {lastRefresh && (
             <span className="text-xs text-slate-600">
@@ -82,12 +103,51 @@ export default function OddsPage() {
             </span>
           )}
           <button
-            onClick={load}
+            onClick={() => load(date)}
             disabled={loading}
             className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs font-medium transition-colors disabled:opacity-50"
           >
             {loading ? "Refreshing…" : "↻ Refresh"}
           </button>
+
+          {/* Date navigator — forward only, odds for future planning */}
+          <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 rounded-lg p-1">
+            <button
+              onClick={() => shiftDate(-1)}
+              disabled={isToday}
+              className="px-2 py-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 transition-colors text-sm disabled:opacity-30 disabled:cursor-not-allowed"
+              aria-label="Previous day"
+            >
+              ‹
+            </button>
+            <label className="relative cursor-pointer">
+              <input
+                type="date"
+                value={date}
+                min={today}
+                onChange={(e) => e.target.value && e.target.value >= today && setDate(e.target.value)}
+                className="absolute inset-0 opacity-0 cursor-pointer w-full"
+              />
+              <span className={`px-3 py-1 text-sm font-medium select-none ${isToday ? "text-indigo-400" : "text-slate-200"}`}>
+                {displayDate}
+              </span>
+            </label>
+            <button
+              onClick={() => shiftDate(1)}
+              className="px-2 py-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 transition-colors text-sm"
+              aria-label="Next day"
+            >
+              ›
+            </button>
+            {!isToday && (
+              <button
+                onClick={() => setDate(today)}
+                className="px-2 py-1 rounded text-xs text-indigo-400 hover:text-indigo-300 transition-colors border-l border-slate-800 ml-1 pl-2"
+              >
+                Today
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -112,8 +172,13 @@ export default function OddsPage() {
           ))}
         </Tabs.List>
 
-        {/* VALUE BETS TAB */}
+        {/* VALUE BETS TAB — always today */}
         <Tabs.Content value="value-bets" className="space-y-3">
+          {!isToday && (
+            <div className="rounded-lg border border-slate-800 bg-slate-900/50 px-4 py-2 text-xs text-slate-500">
+              Value bets are always shown for today — they're time-sensitive alerts.
+            </div>
+          )}
           {!loading && valueBets.length === 0 && (
             <EmptyState message="No value bets detected today." sub="Value bets appear when model probability exceeds market implied probability by 5%+" />
           )}
@@ -153,10 +218,13 @@ export default function OddsPage() {
           ))}
         </Tabs.Content>
 
-        {/* ODDS COMPARISON TAB */}
+        {/* ODDS COMPARISON TAB — follows selected date */}
         <Tabs.Content value="odds" className="space-y-4">
           {!loading && matchGroups.length === 0 && (
-            <EmptyState message="No odds available for today." sub="Trigger odds ingestion to pull latest lines." />
+            <EmptyState
+              message={`No odds available for ${displayDate}.`}
+              sub={isToday ? "Trigger odds ingestion to pull latest lines." : "Odds for future dates appear once bookmakers publish lines."}
+            />
           )}
           {matchGroups.map((group) => {
             const hasDraw = group.bookmakers.some((b) => b.draw_odds != null);
@@ -207,8 +275,13 @@ export default function OddsPage() {
           })}
         </Tabs.Content>
 
-        {/* ARB ALERTS TAB */}
+        {/* ARB ALERTS TAB — always today */}
         <Tabs.Content value="arb" className="space-y-3">
+          {!isToday && (
+            <div className="rounded-lg border border-slate-800 bg-slate-900/50 px-4 py-2 text-xs text-slate-500">
+              Arb alerts are always shown for today — opportunities expire quickly.
+            </div>
+          )}
           {!loading && arbAlerts.length === 0 && (
             <EmptyState message="No arbitrage opportunities today." sub="Arb alerts appear when combined back-all stakes across bookmakers yield guaranteed profit." />
           )}

@@ -159,8 +159,9 @@ export async function logBet(bet: {
   return res.json();
 }
 
-export async function fetchTodayOdds(): Promise<OddsRow[]> {
-  const res = await fetch(`${BASE}/odds/today`, { cache: "no-store" });
+export async function fetchTodayOdds(date?: string): Promise<OddsRow[]> {
+  const url = date ? `${BASE}/odds/today?date=${date}` : `${BASE}/odds/today`;
+  const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) return [];
   return res.json();
 }
