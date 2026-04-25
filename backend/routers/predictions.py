@@ -225,7 +225,7 @@ async def get_today_predictions(
                     away_team=away_name,
                     league=match["league"],
                     sport=s,
-                    start_time=str(match["start_time"]),
+                    start_time=match["start_time"].isoformat(),
                     home_prob=pred["home_prob"],
                     draw_prob=pred.get("draw_prob"),
                     away_prob=pred["away_prob"],

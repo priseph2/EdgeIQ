@@ -89,6 +89,23 @@ def upsert_teams(supabase, raw_teams: list[dict]) -> dict[int, str]:
     return id_map
 
 
+def _parse_nba_start_time(game: dict) -> str:
+    """BallDontLie stores the actual game time in `status` for scheduled games."""
+    status = game.get("status", "")
+    if status and status != "Final" and "T" in status:
+        try:
+            from datetime import timezone as tz
+            dt = datetime.fromisoformat(status.replace("Z", "+00:00"))
+            return dt.astimezone(tz.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        except ValueError:
+            pass
+    # Finished games: date field is sufficient (exact time doesn't matter)
+    date_str = game.get("date", "")
+    if "T" in date_str:
+        return date_str
+    return date_str + "T00:00:00Z"
+
+
 def upsert_match(supabase, game: dict, team_id_map: dict[str, str]) -> Optional[str]:
     home_ext = str(game["home_team"]["id"])
     away_ext = str(game["visitor_team"]["id"])
@@ -108,7 +125,7 @@ def upsert_match(supabase, game: dict, team_id_map: dict[str, str]) -> Optional[
         "away_team_id": away_uuid,
         "sport": SPORT,
         "league": LEAGUE,
-        "start_time": game["date"] + "T00:00:00Z",
+        "start_time": _parse_nba_start_time(game),
         "status": "finished" if game["status"] == "Final" else "scheduled",
         "home_score": home_score,
         "away_score": away_score,

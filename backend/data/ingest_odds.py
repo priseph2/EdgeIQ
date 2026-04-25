@@ -104,6 +104,8 @@ def find_or_create_nba_match(supabase, home_name: str, away_name: str, commence_
     """Find existing scheduled match or auto-create one from Odds API data."""
     match_uuid = find_match_uuid(supabase, home_name, away_name)
     if match_uuid:
+        # Odds API has the real game time; always overwrite the BallDontLie midnight placeholder
+        supabase.table("matches").update({"start_time": commence_time}).eq("id", match_uuid).execute()
         return match_uuid
 
     home_uuid = _find_or_create_team(supabase, home_name)
