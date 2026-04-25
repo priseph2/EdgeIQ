@@ -1,11 +1,32 @@
 "use client";
 import { useState, useEffect } from "react";
-import { fetchAnalytics, logBet } from "@/lib/api";
-import type { Analytics } from "@/lib/api";
+import { fetchAnalytics, fetchBets, logBet } from "@/lib/api";
+import type { Analytics, Bet } from "@/lib/api";
 import { formatPnl, cn } from "@/lib/utils";
+import {
+  AreaChart, Area, XAxis, YAxis, Tooltip,
+  ResponsiveContainer, CartesianGrid,
+} from "recharts";
+
+interface ChartPoint { date: string; pnl: number }
+
+function buildBankrollCurve(bets: Bet[]): ChartPoint[] {
+  const settled = bets
+    .filter((b) => b.settled_at && b.pnl != null)
+    .sort((a, b) => new Date(a.settled_at!).getTime() - new Date(b.settled_at!).getTime());
+  let running = 0;
+  return settled.map((b) => {
+    running += b.pnl!;
+    return {
+      date: new Date(b.settled_at!).toLocaleDateString("en-NG", { month: "short", day: "numeric" }),
+      pnl: Math.round(running * 100) / 100,
+    };
+  });
+}
 
 export default function TrackerPage() {
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
+  const [chartData, setChartData] = useState<ChartPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
@@ -15,7 +36,11 @@ export default function TrackerPage() {
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    fetchAnalytics().then((a) => { setAnalytics(a); setLoading(false); });
+    Promise.all([fetchAnalytics(), fetchBets()]).then(([a, bets]) => {
+      setAnalytics(a);
+      setChartData(buildBankrollCurve(bets));
+      setLoading(false);
+    });
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -34,8 +59,9 @@ export default function TrackerPage() {
       setSaved(true);
       setShowForm(false);
       setForm({ selection: "", bookmaker: "", odds: "", stake: "", sport: "", tag: "", notes: "" });
-      const updated = await fetchAnalytics();
+      const [updated, bets] = await Promise.all([fetchAnalytics(), fetchBets()]);
       setAnalytics(updated);
+      setChartData(buildBankrollCurve(bets));
       setTimeout(() => setSaved(false), 3000);
     } catch {
       alert("Failed to save bet");
@@ -141,6 +167,41 @@ export default function TrackerPage() {
               </div>
             ))}
           </div>
+
+          {/* Bankroll curve */}
+          {chartData.length >= 2 && (
+            <div className="rounded-xl bg-[#0f172a] border border-slate-800 p-4">
+              <h3 className="text-sm font-semibold text-slate-300 mb-4">Cumulative P&L</h3>
+              <ResponsiveContainer width="100%" height={180}>
+                <AreaChart data={chartData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="pnlGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                  <XAxis dataKey="date" tick={{ fill: "#64748b", fontSize: 10 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: "#64748b", fontSize: 10 }} axisLine={false} tickLine={false} width={40} />
+                  <Tooltip
+                    contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
+                    labelStyle={{ color: "#94a3b8" }}
+                    itemStyle={{ color: "#818cf8" }}
+                    formatter={(v) => [formatPnl(Number(v)), "P&L"]}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="pnl"
+                    stroke="#6366f1"
+                    strokeWidth={2}
+                    fill="url(#pnlGrad)"
+                    dot={false}
+                    activeDot={{ r: 4, fill: "#6366f1" }}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          )}
 
           {/* Breakdown tables */}
           <div className="grid gap-4 sm:grid-cols-2">

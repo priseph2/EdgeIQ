@@ -46,6 +46,58 @@ export interface Analytics {
   by_tag: Record<string, { staked: number; pnl: number; bets: number }>;
 }
 
+export interface OddsRow {
+  match_id: string;
+  home_team: string;
+  away_team: string;
+  league: string;
+  start_time: string;
+  bookmaker: string;
+  home_odds: number | null;
+  draw_odds: number | null;
+  away_odds: number | null;
+}
+
+export interface ValueBet {
+  match_id: string;
+  home_team: string;
+  away_team: string;
+  league: string;
+  start_time: string;
+  selection: string;
+  edge_pct: number;
+  model_prob: number;
+  market_prob: number;
+  best_odds: number;
+  detected_at: string;
+}
+
+export interface ArbAlert {
+  match_id: string;
+  home_team: string;
+  away_team: string;
+  league: string;
+  profit_pct: number;
+  stakes_json: Record<string, { stake: number; book: string }>;
+  detected_at: string;
+}
+
+export interface Bet {
+  id: string;
+  sport: string | null;
+  league: string | null;
+  selection: string;
+  bookmaker: string;
+  odds: number;
+  stake: number;
+  status: string;
+  pnl: number | null;
+  tag: string | null;
+  notes: string | null;
+  placed_at: string;
+  settled_at: string | null;
+}
+
 export async function fetchTodayPredictions(sport?: string): Promise<Prediction[]> {
   const url = `${BASE}/predictions/today${sport ? `?sport=${sport}` : ""}`;
   const res = await fetch(url, { next: { revalidate: 3600 } });
@@ -71,6 +123,12 @@ export async function fetchAnalytics(): Promise<Analytics | null> {
   return res.json();
 }
 
+export async function fetchBets(): Promise<Bet[]> {
+  const res = await fetch(`${BASE}/bets?limit=500`, { cache: "no-store" });
+  if (!res.ok) return [];
+  return res.json();
+}
+
 export async function logBet(bet: {
   match_id?: string;
   sport?: string;
@@ -89,5 +147,23 @@ export async function logBet(bet: {
     body: JSON.stringify(bet),
   });
   if (!res.ok) throw new Error("Failed to log bet");
+  return res.json();
+}
+
+export async function fetchTodayOdds(): Promise<OddsRow[]> {
+  const res = await fetch(`${BASE}/odds/today`, { cache: "no-store" });
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function fetchValueBets(): Promise<ValueBet[]> {
+  const res = await fetch(`${BASE}/odds/value-bets`, { cache: "no-store" });
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function fetchArbAlerts(): Promise<ArbAlert[]> {
+  const res = await fetch(`${BASE}/odds/arb`, { cache: "no-store" });
+  if (!res.ok) return [];
   return res.json();
 }
