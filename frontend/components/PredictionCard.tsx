@@ -15,6 +15,9 @@ function getMatchStatus(startTime: string, sport: string): "upcoming" | "live" |
   const elapsed = Date.now() - new Date(startTime).getTime();
   if (elapsed < 0) return "upcoming";
   const duration = sport === "basketball" ? 150 * 60_000 : 115 * 60_000;
+  // If elapsed >> duration the DB start_time is likely a midnight UTC placeholder
+  // from BallDontLie (not a real kickoff time). Treat as upcoming rather than expired.
+  if (elapsed > duration + 4 * 60 * 60_000) return "upcoming";
   return elapsed < duration ? "live" : "expired";
 }
 
