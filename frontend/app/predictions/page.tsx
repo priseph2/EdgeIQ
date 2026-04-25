@@ -18,7 +18,8 @@ export default function PredictionsPage() {
   useEffect(() => {
     setLoading(true);
     fetchTodayPredictions(sport === "all" ? undefined : sport)
-      .then((p) => { setPredictions(p); setLoading(false); });
+      .then((p) => { setPredictions(p); setLoading(false); })
+      .catch(() => setLoading(false));
   }, [sport]);
 
   const filtered = predictions

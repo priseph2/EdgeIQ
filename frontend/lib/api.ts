@@ -100,7 +100,7 @@ export interface Bet {
 
 export async function fetchTodayPredictions(sport?: string): Promise<Prediction[]> {
   const url = `${BASE}/predictions/today${sport ? `?sport=${sport}` : ""}`;
-  const res = await fetch(url, { next: { revalidate: 3600 } });
+  const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) return [];
   return res.json();
 }
