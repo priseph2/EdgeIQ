@@ -106,19 +106,19 @@ export async function fetchTodayPredictions(sport?: string): Promise<Prediction[
 }
 
 export async function fetchAIAnalysis(matchId: string): Promise<ClaudeAnalysis> {
-  const res = await fetch(`${BASE}/predictions/${matchId}/analysis`, { method: "POST" });
+  const res = await fetch(`${BASE}/predictions/${matchId}/analysis`, { method: "POST", cache: "no-store" });
   if (!res.ok) throw new Error("AI analysis failed");
   return res.json();
 }
 
 export async function fetchModelStats() {
-  const res = await fetch(`${BASE}/predictions/model/stats`);
+  const res = await fetch(`${BASE}/predictions/model/stats`, { cache: "no-store" });
   if (!res.ok) return {};
   return res.json();
 }
 
 export async function fetchAnalytics(): Promise<Analytics | null> {
-  const res = await fetch(`${BASE}/bets/analytics`);
+  const res = await fetch(`${BASE}/bets/analytics`, { cache: "no-store" });
   if (!res.ok) return null;
   return res.json();
 }
