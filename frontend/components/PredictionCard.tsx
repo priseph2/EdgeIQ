@@ -11,6 +11,13 @@ interface Props {
   prediction: Prediction;
 }
 
+function getMatchStatus(startTime: string, sport: string): "upcoming" | "live" | "expired" {
+  const elapsed = Date.now() - new Date(startTime).getTime();
+  if (elapsed < 0) return "upcoming";
+  const duration = sport === "basketball" ? 150 * 60_000 : 115 * 60_000;
+  return elapsed < duration ? "live" : "expired";
+}
+
 export default function PredictionCard({ prediction: p }: Props) {
   const [analysis, setAnalysis] = useState<ClaudeAnalysis | null>(null);
   const [loading, setLoading] = useState(false);
@@ -36,10 +43,13 @@ export default function PredictionCard({ prediction: p }: Props) {
     p.pick === "draw" ? (p.draw_prob ?? 0) :
     p.away_prob;
 
+  const matchStatus = getMatchStatus(p.start_time, p.sport);
+
   return (
     <div className={cn(
       "rounded-xl border bg-[#0f172a] p-4 flex flex-col gap-3 transition-all",
-      p.value_flag ? "border-emerald-500/40" : "border-slate-800"
+      p.value_flag && matchStatus === "upcoming" ? "border-emerald-500/40" : "border-slate-800",
+      matchStatus === "expired" && "opacity-50"
     )}>
       {/* Header */}
       <div className="flex items-start justify-between gap-2">
@@ -52,10 +62,22 @@ export default function PredictionCard({ prediction: p }: Props) {
           </p>
         </div>
         <div className="flex flex-col items-end gap-1">
-          <span className={cn("text-xs px-2 py-0.5 rounded-full border font-medium", confidenceColor(p.confidence))}>
-            {p.confidence.toUpperCase()}
-          </span>
-          {p.value_flag && (
+          {matchStatus === "live" && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-red-500/15 text-red-400 border border-red-500/30 font-medium animate-pulse">
+              LIVE
+            </span>
+          )}
+          {matchStatus === "expired" && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-slate-700/50 text-slate-500 border border-slate-700 font-medium">
+              EXPIRED
+            </span>
+          )}
+          {matchStatus === "upcoming" && (
+            <span className={cn("text-xs px-2 py-0.5 rounded-full border font-medium", confidenceColor(p.confidence))}>
+              {p.confidence.toUpperCase()}
+            </span>
+          )}
+          {p.value_flag && matchStatus === "upcoming" && (
             <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-medium">
               VALUE BET
             </span>
