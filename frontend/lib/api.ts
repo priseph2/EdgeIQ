@@ -98,8 +98,12 @@ export interface Bet {
   settled_at: string | null;
 }
 
-export async function fetchTodayPredictions(sport?: string): Promise<Prediction[]> {
-  const url = `${BASE}/predictions/today${sport ? `?sport=${sport}` : ""}`;
+export async function fetchTodayPredictions(sport?: string, date?: string): Promise<Prediction[]> {
+  const params = new URLSearchParams();
+  if (sport) params.set("sport", sport);
+  if (date) params.set("date", date);
+  const query = params.toString();
+  const url = `${BASE}/predictions/today${query ? `?${query}` : ""}`;
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) return [];
   return res.json();
