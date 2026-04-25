@@ -3,10 +3,26 @@ import { useState, useEffect } from "react";
 import { fetchTodayPredictions } from "@/lib/api";
 import type { Prediction } from "@/lib/api";
 import PredictionCard from "@/components/PredictionCard";
-import { sportEmoji } from "@/lib/utils";
 
-const LEAGUES = ["All", "NBA", "EuroLeague", "Premier League", "La Liga", "Bundesliga", "Serie A", "Ligue 1"];
-const SPORTS = ["all", "basketball", "football"];
+const LEAGUES_BY_SPORT: Record<string, string[]> = {
+  all:        ["All", "NBA", "EuroLeague", "EuroCup", "Premier League", "La Liga", "Bundesliga", "Serie A", "Ligue 1"],
+  basketball: ["All", "NBA", "EuroLeague", "EuroCup"],
+  football:   ["All", "Premier League", "La Liga", "Bundesliga", "Serie A", "Ligue 1"],
+};
+
+function CardSkeleton() {
+  return (
+    <div className="rounded-xl border border-slate-800 bg-[#0f172a] p-4 space-y-3 animate-pulse">
+      <div className="h-3 w-28 bg-slate-800 rounded" />
+      <div className="h-5 w-full bg-slate-800 rounded" />
+      <div className="h-2 w-full bg-slate-800 rounded-full" />
+      <div className="flex gap-2">
+        <div className="flex-1 h-10 bg-slate-800 rounded-lg" />
+        <div className="flex-1 h-10 bg-slate-800 rounded-lg" />
+      </div>
+    </div>
+  );
+}
 
 export default function PredictionsPage() {
   const [predictions, setPredictions] = useState<Prediction[]>([]);
@@ -14,13 +30,21 @@ export default function PredictionsPage() {
   const [league, setLeague] = useState("All");
   const [valueOnly, setValueOnly] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     setLoading(true);
+    setError(false);
     fetchTodayPredictions(sport === "all" ? undefined : sport)
       .then((p) => { setPredictions(p); setLoading(false); })
-      .catch(() => setLoading(false));
+      .catch(() => { setError(true); setLoading(false); });
   }, [sport]);
+
+  // Reset league when sport changes if current league doesn't belong to new sport
+  const handleSportChange = (s: string) => {
+    setSport(s);
+    if (!LEAGUES_BY_SPORT[s].includes(league)) setLeague("All");
+  };
 
   const filtered = predictions
     .filter((p) => league === "All" || p.league === league)
@@ -41,11 +65,12 @@ export default function PredictionsPage() {
 
       {/* Filters */}
       <div className="flex flex-wrap gap-2 items-center">
+        {/* Sport toggle */}
         <div className="flex gap-1 bg-slate-900 rounded-lg p-1 border border-slate-800">
-          {SPORTS.map((s) => (
+          {(["all", "basketball", "football"] as const).map((s) => (
             <button
               key={s}
-              onClick={() => setSport(s)}
+              onClick={() => handleSportChange(s)}
               className={`px-3 py-1 text-xs rounded-md font-medium transition-colors ${
                 sport === s ? "bg-indigo-600 text-white" : "text-slate-400 hover:text-slate-200"
               }`}
@@ -55,14 +80,16 @@ export default function PredictionsPage() {
           ))}
         </div>
 
+        {/* League dropdown — only shows leagues for the selected sport */}
         <select
           value={league}
           onChange={(e) => setLeague(e.target.value)}
           className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-indigo-500"
         >
-          {LEAGUES.map((l) => <option key={l} value={l}>{l}</option>)}
+          {LEAGUES_BY_SPORT[sport].map((l) => <option key={l} value={l}>{l}</option>)}
         </select>
 
+        {/* Value bets toggle */}
         <button
           onClick={() => setValueOnly(!valueOnly)}
           className={`px-3 py-1.5 text-xs rounded-lg border font-medium transition-colors ${
@@ -75,19 +102,47 @@ export default function PredictionsPage() {
         </button>
 
         <span className="text-xs text-slate-500 ml-auto">
-          {loading ? "Loading…" : `${filtered.length} matches`}
+          {loading ? "Loading…" : error ? "Error" : `${filtered.length} matches`}
         </span>
       </div>
 
-      {!loading && filtered.length === 0 && (
-        <div className="rounded-xl border border-slate-800 bg-[#0f172a] p-8 text-center">
-          <p className="text-slate-500 text-sm">No predictions match your filters.</p>
+      {/* Loading skeleton */}
+      {loading && (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {[...Array(6)].map((_, i) => <CardSkeleton key={i} />)}
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {filtered.map((p) => <PredictionCard key={p.match_id} prediction={p} />)}
-      </div>
+      {/* Error state */}
+      {!loading && error && (
+        <div className="rounded-xl border border-red-500/20 bg-[#0f172a] p-8 text-center">
+          <p className="text-red-400 text-sm">Failed to load predictions.</p>
+          <p className="text-slate-600 text-xs mt-1">The backend may be starting up — try again in a moment.</p>
+          <button
+            onClick={() => handleSportChange(sport)}
+            className="mt-3 px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!loading && !error && filtered.length === 0 && (
+        <div className="rounded-xl border border-slate-800 bg-[#0f172a] p-8 text-center">
+          <p className="text-slate-500 text-sm">No predictions match your filters.</p>
+          {valueOnly && (
+            <p className="text-slate-600 text-xs mt-1">No value bets detected today — try removing the filter.</p>
+          )}
+        </div>
+      )}
+
+      {/* Results */}
+      {!loading && !error && (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {filtered.map((p) => <PredictionCard key={p.match_id} prediction={p} />)}
+        </div>
+      )}
     </div>
   );
 }
