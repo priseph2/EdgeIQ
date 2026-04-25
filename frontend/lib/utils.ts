@@ -45,7 +45,9 @@ export function sportEmoji(sport: string): string {
 
 export function formatKickoff(isoString: string): string {
   const d = new Date(isoString);
-  return d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Africa/Lagos" });
+  const date = d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "Africa/Lagos" });
+  const time = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Africa/Lagos" });
+  return `${date} · ${time}`;
 }
 
 export function formatDate(isoString: string): string {
