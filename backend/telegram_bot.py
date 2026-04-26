@@ -72,16 +72,12 @@ def _build_prediction_text(p: dict) -> str:
 
 
 async def fetch_today_predictions(sport: str | None = None) -> list[dict]:
-    import httpx
-    base = get_settings().backend_url
-    url = f"{base}/predictions/today"
-    if sport:
-        url += f"?sport={sport}"
+    """Call the predictions logic directly — avoids HTTP self-calls and port issues."""
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            r = await client.get(url)
-            r.raise_for_status()
-            return r.json()
+        from routers.predictions import get_today_predictions
+        from db import get_supabase, get_redis
+        results = await get_today_predictions(sport=sport, date=None, supabase=get_supabase(), redis=get_redis())
+        return [r.model_dump() for r in results]
     except Exception as e:
         logger.error(f"Failed to fetch predictions: {e}")
         return []
@@ -175,14 +171,22 @@ async def cmd_predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    import httpx
-    base = get_settings().backend_url
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            r = await client.get(f"{base}/predictions/model/stats")
-            stats = r.json()
-    except Exception:
-        await update.message.reply_text("Could not fetch model stats. Is the backend running?")
+        from pathlib import Path
+        import joblib
+        stats = {}
+        for sport in ["basketball", "football"]:
+            path = Path(__file__).parent / "ml" / "models" / f"{sport}_v1.pkl"
+            if path.exists():
+                artifact = joblib.load(path)
+                stats[sport] = {
+                    "accuracy": artifact.get("accuracy", 0),
+                    "brier_score": artifact.get("brier_score", 0),
+                    "auc": artifact.get("auc", 0),
+                    "trained_at": artifact.get("trained_at", "N/A"),
+                }
+    except Exception as e:
+        await update.message.reply_text(f"Could not load model stats: {e}")
         return
 
     if not stats:
