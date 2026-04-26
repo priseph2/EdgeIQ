@@ -24,7 +24,14 @@ async def lifespan(app: FastAPI):
     scheduler = create_scheduler()
     scheduler.start()
     logger.info("Scheduler started")
+
+    from telegram_bot import start_background, stop_background
+    import asyncio
+    asyncio.create_task(start_background())
+
     yield
+
+    await stop_background()
     scheduler.shutdown(wait=False)
     logger.info("EdgeIQ backend shutting down")
 

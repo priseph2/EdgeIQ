@@ -211,6 +211,23 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def _send_message(text: str):
+    """Send a message using the running bot app or a one-shot app if bot isn't started."""
+    s = get_settings()
+    if not s.telegram_bot_token or not s.telegram_chat_id:
+        return
+    if _bot_app:
+        await _bot_app.bot.send_message(
+            chat_id=s.telegram_chat_id, text=text, parse_mode=ParseMode.MARKDOWN
+        )
+    else:
+        app = Application.builder().token(s.telegram_bot_token).build()
+        async with app:
+            await app.bot.send_message(
+                chat_id=s.telegram_chat_id, text=text, parse_mode=ParseMode.MARKDOWN
+            )
+
+
 async def send_daily_digest():
     """Called by scheduler at 9am Lagos time."""
     s = get_settings()
@@ -239,37 +256,21 @@ async def send_daily_digest():
         for p in high_conf[:3]:
             msg += _build_prediction_text(p) + "\n"
 
-    app = Application.builder().token(s.telegram_bot_token).build()
-    async with app:
-        await app.bot.send_message(
-            chat_id=s.telegram_chat_id,
-            text=msg,
-            parse_mode=ParseMode.MARKDOWN,
-        )
+    for i in range(0, len(msg), 4000):
+        await _send_message(msg[i:i+4000])
     logger.info(f"Daily digest sent to {s.telegram_chat_id}")
 
 
 async def send_alert(alert_type: str, message: str):
     """Send immediate alert (value bet found, arb found)."""
-    s = get_settings()
-    if not s.telegram_bot_token or not s.telegram_chat_id:
-        return
-    app = Application.builder().token(s.telegram_bot_token).build()
-    async with app:
-        await app.bot.send_message(
-            chat_id=s.telegram_chat_id,
-            text=message,
-            parse_mode=ParseMode.MARKDOWN,
-        )
+    await _send_message(message)
 
 
-def run_bot():
-    logging.basicConfig(level=logging.INFO)
+def _build_app():
     s = get_settings()
     if not s.telegram_bot_token:
-        logger.error("TELEGRAM_BOT_TOKEN not set")
-        return
-
+        logger.warning("TELEGRAM_BOT_TOKEN not set — bot disabled")
+        return None
     app = Application.builder().token(s.telegram_bot_token).build()
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("today", cmd_today))
@@ -277,8 +278,47 @@ def run_bot():
     app.add_handler(CommandHandler("predict", cmd_predict))
     app.add_handler(CommandHandler("stats", cmd_stats))
     app.add_handler(CommandHandler("help", cmd_help))
+    return app
 
-    logger.info("EdgeIQ Telegram bot starting...")
+
+_bot_app = None
+
+
+async def start_background():
+    """Start bot polling as a background task inside the FastAPI event loop."""
+    global _bot_app
+    app = _build_app()
+    if not app:
+        return
+    _bot_app = app
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+    logger.info("Telegram bot polling started")
+
+
+async def stop_background():
+    """Gracefully stop the background bot on FastAPI shutdown."""
+    global _bot_app
+    if not _bot_app:
+        return
+    try:
+        await _bot_app.updater.stop()
+        await _bot_app.stop()
+        await _bot_app.shutdown()
+        logger.info("Telegram bot stopped")
+    except Exception as e:
+        logger.warning(f"Bot shutdown error: {e}")
+    _bot_app = None
+
+
+def run_bot():
+    """Standalone entry point for local testing."""
+    logging.basicConfig(level=logging.INFO)
+    app = _build_app()
+    if not app:
+        return
+    logger.info("EdgeIQ Telegram bot starting (polling)...")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
