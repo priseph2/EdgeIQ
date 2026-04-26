@@ -63,6 +63,15 @@ async def job_refresh_fixtures():
             logger.error(f"{module} job error: {e}")
 
 
+async def job_ingest_xg():
+    """Fetch xG data from API-Football and update team_stats_football."""
+    from data.ingest_xg import run as run_xg
+    try:
+        await run_xg()
+    except Exception as e:
+        logger.error(f"xG ingestion job failed: {e}")
+
+
 async def job_daily_digest():
     from telegram_bot import send_daily_digest
     try:
@@ -115,6 +124,13 @@ def create_scheduler() -> AsyncIOScheduler:
         job_refresh_fixtures,
         CronTrigger(hour=6, minute=0, timezone=LAGOS_TZ),
         id="refresh_fixtures"
+    )
+
+    # xG ingestion at 6:30am Lagos (after fixture refresh, before morning digest)
+    scheduler.add_job(
+        job_ingest_xg,
+        CronTrigger(hour=6, minute=30, timezone=LAGOS_TZ),
+        id="ingest_xg"
     )
 
     # Odds ingestion 3x/day to stay within 500 req/month free tier
