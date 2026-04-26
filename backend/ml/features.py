@@ -88,6 +88,10 @@ def build_basketball_features(matches_df: pd.DataFrame, stats_df: pd.DataFrame) 
             # H2H
             "h2h_home_win_pct": h2h["home_win_pct"],
             "h2h_matches": h2h["matches"],
+            # Injury features — default 0 for historical (no data available)
+            "home_injured_count": 0.0,
+            "away_injured_count": 0.0,
+            "injury_diff": 0.0,
             # Target
             "target": 1 if match["result"] == "home" else 0,
         }
@@ -372,13 +376,16 @@ def _h2h_football(home_id: str, away_id: str, before: datetime,
 def build_inference_features_basketball(
     home_team_id: str, away_team_id: str,
     match_time: datetime,
-    stats_df: pd.DataFrame, matches_df: pd.DataFrame
+    stats_df: pd.DataFrame, matches_df: pd.DataFrame,
+    injury_map: dict | None = None,
 ) -> dict | None:
     home_feats = _team_bb_features(home_team_id, match_time, stats_df, matches_df, True)
     away_feats = _team_bb_features(away_team_id, match_time, stats_df, matches_df, False)
     h2h = _h2h_basketball(home_team_id, away_team_id, match_time, matches_df)
     if not home_feats or not away_feats:
         return None
+    home_inj = float((injury_map or {}).get(home_team_id, 0))
+    away_inj = float((injury_map or {}).get(away_team_id, 0))
     return {
         "home_pts_avg5": home_feats["pts_avg5"],
         "home_pts_avg10": home_feats["pts_avg10"],
@@ -403,6 +410,9 @@ def build_inference_features_basketball(
         "diff_win_pct": home_feats["win_pct"] - away_feats["win_pct"],
         "h2h_home_win_pct": h2h["home_win_pct"],
         "h2h_matches": h2h["matches"],
+        "home_injured_count": home_inj,
+        "away_injured_count": away_inj,
+        "injury_diff": home_inj - away_inj,
     }
 
 

@@ -143,6 +143,14 @@ async def get_today_predictions(
     today_start = day_start
     today_end = today_start + timedelta(days=1)
 
+    # Fetch NBA injury data once for the whole batch
+    injury_map: dict = {}
+    try:
+        from data.ingest_nba_injuries import get_team_injury_map
+        injury_map = await get_team_injury_map(supabase)
+    except Exception as e:
+        logger.warning(f"Could not fetch injury data: {e}")
+
     sports = [sport] if sport else ["basketball", "football"]
     results = []
 
@@ -195,7 +203,7 @@ async def get_today_predictions(
 
             try:
                 if s == "basketball":
-                    pred = predict_basketball(home_id, away_id, match_time, stats_df, matches_df)
+                    pred = predict_basketball(home_id, away_id, match_time, stats_df, matches_df, injury_map=injury_map)
                 else:
                     pred = predict_football(home_id, away_id, match["league"], match_time, stats_df, matches_df)
             except FileNotFoundError:

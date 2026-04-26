@@ -56,9 +56,11 @@ def predict_basketball(
     match_time: datetime,
     stats_df,
     matches_df,
+    injury_map: dict | None = None,
 ) -> Optional[dict]:
     feats = build_inference_features_basketball(
-        home_team_id, away_team_id, match_time, stats_df, matches_df
+        home_team_id, away_team_id, match_time, stats_df, matches_df,
+        injury_map=injury_map,
     )
     if feats is None:
         return None
