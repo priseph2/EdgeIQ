@@ -74,7 +74,7 @@ def predict_basketball(
 
     confidence = _confidence_label(max(home_prob, away_prob))
 
-    predicted_total = round(feats.get("home_pts_avg5", 0) + feats.get("away_pts_avg5", 0), 1)
+    predicted_total = round(feats.get("home_pts_avg10", 0) + feats.get("away_pts_avg10", 0), 1)
 
     return {
         "home_prob": round(home_prob, 4),
@@ -123,8 +123,8 @@ def predict_football(
 
     home_xg = feats.get("home_xg_avg5", 0.0)
     away_xg = feats.get("away_xg_avg5", 0.0)
-    home_goals_avg = round(feats.get("home_goals_avg5", 0.0), 2)
-    away_goals_avg = round(feats.get("away_goals_avg5", 0.0), 2)
+    home_goals_avg = round(feats.get("home_goals_avg10", 0.0), 2)
+    away_goals_avg = round(feats.get("away_goals_avg10", 0.0), 2)
 
     return {
         "home_prob": round(home_prob, 4),
