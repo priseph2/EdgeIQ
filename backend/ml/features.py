@@ -2,11 +2,13 @@
 Feature engineering pipeline for both basketball and football models.
 
 Basketball features (binary classifier: home win):
+  - Elo ratings (home_elo, away_elo, elo_diff) — cumulative quality signal
   - Rolling points scored/allowed (last 5, last 10)
   - Home/away form split
   - Rest days + back-to-back flag
   - H2H record (last 5 meetings)
   - Win % this season
+  - Injury counts (live at inference, 0 for historical)
 
 Football features (3-way classifier: home/draw/away):
   - Rolling goals scored/conceded (last 5, last 10)
@@ -27,6 +29,48 @@ from typing import Literal
 SportType = Literal["basketball", "football"]
 
 
+# ── Elo Ratings ────────────────────────────────────────────────────────────────
+
+def compute_elo_ratings(
+    matches_df: pd.DataFrame,
+    k: float = 20.0,
+    home_advantage: float = 100.0,
+    initial_elo: float = 1500.0,
+) -> tuple[dict, dict]:
+    """
+    Sweep finished matches in chronological order and compute Elo ratings.
+
+    Returns:
+        current_elo    — {team_id: elo} latest rating per team
+        pre_match_elo  — {match_id: (home_elo, away_elo)} ratings BEFORE each match
+                         (use these as training features to avoid look-ahead)
+    """
+    elo: dict = {}
+    pre_match: dict = {}
+
+    finished = matches_df[
+        matches_df["result"].isin(["home", "away"])
+    ].sort_values("start_time")
+
+    for _, m in finished.iterrows():
+        home_id = m["home_team_id"]
+        away_id = m["away_team_id"]
+        mid = m["id"]
+
+        h = elo.get(home_id, initial_elo)
+        a = elo.get(away_id, initial_elo)
+        pre_match[mid] = (h, a)
+
+        # Home team gets a flat Elo bonus before calculating expected probability
+        expected_home = 1.0 / (1.0 + 10.0 ** ((a - (h + home_advantage)) / 400.0))
+        actual = 1.0 if m["result"] == "home" else 0.0
+
+        elo[home_id] = h + k * (actual - expected_home)
+        elo[away_id] = a + k * ((1 - actual) - (1 - expected_home))
+
+    return elo, pre_match
+
+
 # ── Basketball Features ────────────────────────────────────────────────────────
 
 def build_basketball_features(matches_df: pd.DataFrame, stats_df: pd.DataFrame) -> pd.DataFrame:
@@ -41,6 +85,8 @@ def build_basketball_features(matches_df: pd.DataFrame, stats_df: pd.DataFrame) 
     matches_df["start_time"] = pd.to_datetime(matches_df["start_time"], utc=True)
     matches_df = matches_df.sort_values("start_time").reset_index(drop=True)
 
+    _, pre_match_elo = compute_elo_ratings(matches_df)
+
     rows = []
     for _, match in matches_df.iterrows():
         if match["result"] not in ("home", "away"):
@@ -49,6 +95,7 @@ def build_basketball_features(matches_df: pd.DataFrame, stats_df: pd.DataFrame) 
         home_id = match["home_team_id"]
         away_id = match["away_team_id"]
         match_time = match["start_time"]
+        mid = match["id"]
 
         home_feats = _team_bb_features(home_id, match_time, stats_df, matches_df, is_home_split=True)
         away_feats = _team_bb_features(away_id, match_time, stats_df, matches_df, is_home_split=False)
@@ -57,10 +104,16 @@ def build_basketball_features(matches_df: pd.DataFrame, stats_df: pd.DataFrame) 
         if home_feats is None or away_feats is None:
             continue
 
+        home_elo, away_elo = pre_match_elo.get(mid, (1500.0, 1500.0))
+
         row = {
-            "match_id": match["id"],
+            "match_id": mid,
             "league": match["league"],
             "start_time": match_time,
+            # Elo — cumulative team quality signal
+            "home_elo": home_elo,
+            "away_elo": away_elo,
+            "elo_diff": home_elo - away_elo,
             # Home team rolling stats
             "home_pts_avg5": home_feats["pts_avg5"],
             "home_pts_avg10": home_feats["pts_avg10"],
@@ -386,7 +439,15 @@ def build_inference_features_basketball(
         return None
     home_inj = float((injury_map or {}).get(home_team_id, 0))
     away_inj = float((injury_map or {}).get(away_team_id, 0))
+
+    current_elo, _ = compute_elo_ratings(matches_df)
+    home_elo = current_elo.get(home_team_id, 1500.0)
+    away_elo = current_elo.get(away_team_id, 1500.0)
+
     return {
+        "home_elo": home_elo,
+        "away_elo": away_elo,
+        "elo_diff": home_elo - away_elo,
         "home_pts_avg5": home_feats["pts_avg5"],
         "home_pts_avg10": home_feats["pts_avg10"],
         "home_opp_pts_avg5": home_feats["opp_pts_avg5"],
